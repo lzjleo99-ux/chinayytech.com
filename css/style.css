@@ -532,6 +532,61 @@ form.contact-form {
 .form-success h2 { font-size: 1.6rem; margin-bottom: 10px; }
 .form-success p { max-width: 380px; margin: 0 auto; }
 
+/* ---------- Cookie consent ---------- */
+.cookie-banner {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 80;
+  background: rgba(6, 12, 24, 0.93);
+  border-top: 1px solid var(--border);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.cookie-banner[hidden] { display: none; }
+.cookie-banner__inner {
+  max-width: var(--max-w);
+  margin: 0 auto;
+  padding: 18px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+.cookie-banner__text {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-dim);
+  max-width: 68ch;
+}
+.cookie-banner__text span[lang="zh"] { display: block; margin-top: 2px; }
+.cookie-banner__actions { display: flex; gap: 12px; flex-shrink: 0; }
+
+/* Both options are the same size and weight: rejecting has to be as easy as
+   accepting, so the decline button is not a faint ghost. */
+.cookie-btn {
+  min-width: 150px;
+  justify-content: center;
+  padding: 12px 20px;
+  font-size: 0.9rem;
+  background: var(--steel-light, #2a3444);
+  border-color: rgba(148, 163, 184, 0.45);
+  color: var(--text);
+}
+.cookie-btn:hover { border-color: var(--text-dim); }
+.cookie-btn--accept {
+  background: linear-gradient(135deg, var(--cyan), var(--blue));
+  border-color: transparent;
+  color: #04101f;
+}
+
+@media (max-width: 760px) {
+  .cookie-banner__inner { flex-direction: column; align-items: stretch; gap: 14px; padding: 16px 18px; }
+  .cookie-banner__actions { width: 100%; }
+  .cookie-btn { flex: 1; min-width: 0; }
+}
+
 /* ---------- WeChat Work card ---------- */
 .wecom {
   display: flex;

@@ -3,14 +3,16 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-EFPZTMKESC"></script>
+<!-- Google tag (gtag.js) - gated on consent; the loader is injected by js/consent.js -->
 <script>
   window.dataLayer = window.dataLayer || [];
   function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-EFPZTMKESC');
+  gtag('consent', 'default', {
+    ad_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
+    analytics_storage: 'denied'
+  });
 </script>
 <title>Contact | China YY Tech</title>
 <meta name="description" content="Get a free factory-direct quotation from China YY Tech. Reach our regional offices in Serbia, the UK, Nigeria, the USA, or Chile." />
@@ -143,10 +145,26 @@
 <footer>
   <div class="container">
     <span>© <span id="year"></span> China YY Tech · Chinayytech.com</span>
-    <span><a href="index.html">Home</a> · <a href="https://www.aichinatrade.com" rel="noopener">aichinatrade.com</a></span>
+    <span><a class="cookie-settings" href="#">Cookie settings</a> · <a href="index.html">Home</a> · <a href="https://www.aichinatrade.com" rel="noopener">aichinatrade.com</a></span>
   </div>
 </footer>
 
+<div class="cookie-banner" id="cookie-banner" role="dialog" aria-live="polite"
+     aria-label="Cookie preferences / Cookie 偏好设置" hidden>
+  <div class="cookie-banner__inner">
+    <p class="cookie-banner__text">
+      We'd like to set analytics cookies to understand how this site is used. They are
+      optional — nothing is sent until you choose.
+      <span lang="zh">我们希望使用分析 Cookie 来了解网站使用情况,此为可选项。</span>
+    </p>
+    <div class="cookie-banner__actions">
+      <button type="button" class="btn cookie-btn" id="cookie-reject">Reject / 拒绝</button>
+      <button type="button" class="btn cookie-btn cookie-btn--accept" id="cookie-accept">Accept / 接受</button>
+    </div>
+  </div>
+</div>
+
+<script defer src="js/consent.js?v=__BUILD__"></script>
 <script type="module" src="js/main.js?v=__BUILD__"></script>
 </body>
 </html>
