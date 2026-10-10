@@ -27,15 +27,17 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
-      # Pages serves assets with max-age=600 at URLs that never change, so a
-      # browser keeps replaying a stale bundle after a deploy. Stamping the
-      # commit SHA into the asset URLs forces a fresh fetch every release.
-      - name: Stamp build id into asset URLs
+      # Asset URLs are already versioned in the committed HTML by tools/stamp.py.
+      # Stamping here instead would only apply when this workflow is the pipeline
+      # that publishes, and the repository also has GitHub's default branch
+      # deploy enabled, so the two race and the unstamped build can win.
+      - name: Verify assets are versioned
         run: |
-          BUILD="${GITHUB_SHA::12}"
-          sed -i "s/__BUILD__/${BUILD}/g" index.html contact.html privacy.html js/main.js
-          echo "Stamped build ${BUILD}"
-          grep -o "v=${BUILD}" index.html contact.html privacy.html js/main.js | sort | uniq -c
+          if grep -rl "__BUILD__" index.html contact.html privacy.html js/main.js; then
+            echo "::error::Unstamped asset URLs. Run: python3 tools/stamp.py"
+            exit 1
+          fi
+          echo "Asset version: $(grep -ohE '\?v=[0-9a-f]+' index.html | head -1)"
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
