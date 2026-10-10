@@ -506,6 +506,38 @@ function crateAlbedo(tone, brand, maxAnisotropy) {
   return map;
 }
 
+// Toothed gear profile, extruded. One mesh per gear rather than a cylinder plus
+// a ring of little boxes.
+function gearGeometry(radius, teeth, thickness) {
+  const shape = new THREE.Shape();
+  const root = radius * 0.82;
+  const step = (Math.PI * 2) / teeth;
+  const at = (ang, r) => [Math.cos(ang) * r, Math.sin(ang) * r];
+  for (let i = 0; i < teeth; i++) {
+    const a = i * step;
+    if (i === 0) shape.moveTo(...at(a, root));
+    else shape.lineTo(...at(a, root));
+    shape.lineTo(...at(a + step * 0.2, radius));
+    shape.lineTo(...at(a + step * 0.3, radius));
+    shape.lineTo(...at(a + step * 0.5, root));
+    shape.lineTo(...at(a + step, root));
+  }
+  shape.closePath();
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, radius * 0.22, 0, Math.PI * 2, true);
+  shape.holes.push(hole);
+  const geo = new THREE.ExtrudeGeometry(shape, {
+    depth: thickness,
+    bevelEnabled: true,
+    bevelSize: thickness * 0.18,
+    bevelThickness: thickness * 0.18,
+    bevelSegments: 1,
+    steps: 1,
+  });
+  geo.center();
+  return geo;
+}
+
 function hullTexture(maxAnisotropy) {
   const w = 2048, h = 280;
   const { c, ctx } = canvas2d(w, h);
@@ -565,7 +597,7 @@ varying float vTail;
 void main() {
   float t = max(uBurst - aTail * aTrail, 0.0);
   vec3 p = position + aVel * t * 0.95;
-  p.y -= 3.2 * t * t;
+  p.y -= 4.6 * t * t;
   p.x += sin(aSeed * 6.283 + t * 9.0) * 0.05 * t;
   p.z += cos(aSeed * 6.283 + t * 7.5) * 0.05 * t;
   vFade = clamp(1.0 - uBurst, 0.0, 1.0) * (0.35 + 0.65 * aSeed);
@@ -583,7 +615,7 @@ void main() {
   vec3 col = mix(uHot, uCool, vTail);
   float a = (1.0 - vTail * 0.72) * vFade * uOpacity;
   // Pushed above 1.0 so the bloom threshold catches the white-hot heads.
-  gl_FragColor = vec4(col * (1.0 + vFade * 2.4), a);
+  gl_FragColor = vec4(col * (1.0 + vFade * 1.3), a);
 }`;
 
 const EMBER_VERT = `
@@ -1038,7 +1070,7 @@ export class CinematicScene {
       this.smoke.push(s);
     }
 
-    const SPARKS = LOW_POWER ? 3000 : 11000;
+    const SPARKS = LOW_POWER ? 2500 : 7000;
     const sGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(SPARKS * 6);
     const sVel = new Float32Array(SPARKS * 6);
@@ -1053,12 +1085,12 @@ export class CinematicScene {
       // Shallow cone: a forge strike throws sparks sideways, not straight up.
       const phi = Math.acos(1 - Math.random() * 1.45);
       // Heavy tail on the speed curve so a few sparks fly far and streak long.
-      const speed = 1.4 + Math.pow(Math.random(), 2.3) * 13.0;
+      const speed = 1.1 + Math.pow(Math.random(), 2.0) * 4.6;
       const vx = Math.sin(phi) * Math.cos(theta) * speed;
       const vy = Math.abs(Math.cos(phi)) * speed * 0.55 + 0.35;
       const vz = Math.sin(phi) * Math.sin(theta) * speed;
       const seed = Math.random();
-      const trail = 0.028 + Math.min(speed / 14, 1) * 0.085;
+      const trail = 0.022 + Math.min(speed / 5.7, 1) * 0.055;
       for (let v = 0; v < 2; v++) {
         const k = i * 2 + v;
         sPos[k * 3] = ox;
@@ -1083,7 +1115,7 @@ export class CinematicScene {
       uniforms: {
         uBurst: { value: 0 },
         uOpacity: { value: 0 },
-        uHot: { value: new THREE.Color(0xfff6e2) },
+        uHot: { value: new THREE.Color(0xffd9a0) },
         uCool: { value: new THREE.Color(0xc43a0c) },
       },
       transparent: true,
@@ -1144,23 +1176,86 @@ export class CinematicScene {
 
     // Everything is sized so it genuinely nests: machine fits the crate, crate
     // fits the container, container fits a deck slot. No scale cheats.
+    // A steam engine rather than a featureless box: boiler, stack, flywheel,
+    // meshing gear train and a reciprocating piston.
     const machine = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.36, 0.40), this._steelMaterial(0xdde3ea, 0.85, 0.28));
-    const drum = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.12, 0.12, 0.42, 32),
-      this._steelMaterial(0xf59e0b, 0.9, 0.28)
-    );
-    drum.rotation.z = Math.PI / 2;
-    drum.position.x = 0.22;
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.05, 0.44), this._steelMaterial(0x39414c, 0.8, 0.45));
-    foot.position.y = -0.16;
-    machine.add(shell, drum, foot);
+    const iron = this._steelMaterial(0x6d7682, 0.95, 0.34);
+    const brass = this._steelMaterial(0xc89338, 0.92, 0.28);
+    const dark = this._steelMaterial(0x2f3741, 0.85, 0.42);
+
+    const bed = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.045, 0.42), dark);
+    bed.position.y = -0.175;
+    machine.add(bed);
+
+    const boiler = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.46, 32), iron);
+    boiler.rotation.z = Math.PI / 2;
+    boiler.position.set(-0.14, -0.02, 0);
+    machine.add(boiler);
+    [-0.3, -0.14, 0.02].forEach((x) => {
+      const band = new THREE.Mesh(new THREE.CylinderGeometry(0.117, 0.117, 0.022, 24), brass);
+      band.rotation.z = Math.PI / 2;
+      band.position.set(x, -0.02, 0);
+      machine.add(band);
+    });
+
+    const stack = new THREE.Mesh(new THREE.CylinderGeometry(0.032, 0.04, 0.1, 20), dark);
+    stack.position.set(-0.3, 0.13, 0);
+    const stackLip = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.038, 0.022, 20), brass);
+    stackLip.position.set(-0.3, 0.185, 0);
+    machine.add(stack, stackLip);
+    this.stackTip = new THREE.Vector3(-0.3, 0.2, 0);
+
+    this.gears = [];
+    const addGear = (r, teeth, pos, mat, speed) => {
+      const gear = new THREE.Mesh(gearGeometry(r, teeth, 0.035), mat);
+      gear.position.copy(pos);
+      machine.add(gear);
+      this.gears.push({ gear, speed });
+      return gear;
+    };
+    // Radii sum to the centre distance so the teeth actually mesh.
+    this.flywheel = addGear(0.105, 18, new THREE.Vector3(0.28, -0.02, 0.14), iron, 1);
+    addGear(0.055, 9, new THREE.Vector3(0.28, 0.14, 0.14), brass, -(0.105 / 0.055));
+
+    const spokeHub = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.06, 16), brass);
+    spokeHub.rotation.x = Math.PI / 2;
+    spokeHub.position.set(0.28, -0.02, 0.14);
+    machine.add(spokeHub);
+
+    const cyl = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.17, 24), iron);
+    cyl.rotation.z = Math.PI / 2;
+    cyl.position.set(0.1, 0.085, -0.12);
+    machine.add(cyl);
+    this.piston = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.2, 14), brass);
+    this.piston.rotation.z = Math.PI / 2;
+    this.piston.position.set(0.26, 0.085, -0.12);
+    machine.add(this.piston);
+
     machine.position.set(0, 0.62, 0);
     machine.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
     this.machine = machine;
     g.add(machine);
+
+    this.steam = [];
+    const steamTex = smokeTexture();
+    for (let i = 0; i < 5; i++) {
+      const puff = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: steamTex,
+          color: 0xdce6f2,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          fog: false,
+        })
+      );
+      puff.userData.offset = i / 5;
+      puff.userData.skipFade = true;
+      machine.add(puff);
+      this.steam.push(puff);
+    }
 
     // Wooden export crate built as a real flat-pack: a base with four side panels
     // hinged along its edges. They start splayed flat and fold up to enclose the
@@ -1514,21 +1609,14 @@ export class CinematicScene {
     });
   }
 
-  _updatePhaseA(t, time, looping) {
+  _updatePhaseA(t, time) {
     const fade = 1 - smoothstep(t, 1 - OVERLAP, 1 + OVERLAP);
     this._fade(this.groupA, fade);
 
-    // Before the user scrolls, the strike runs on a loop so the first thing on
-    // screen is the impact rather than a hammer hanging in mid-air.
-    let fall, burst, cycle;
-    if (looping) {
-      cycle = (time % 3.1) / 3.1;
-      fall = smoothstep(cycle, 0.3, 0.42) * (1 - smoothstep(cycle, 0.62, 0.88));
-      burst = cycle < 0.42 ? 0 : clamp((cycle - 0.42) / 0.46, 0, 1);
-    } else {
-      fall = smoothstep(t, 0.12, 0.26);
-      burst = clamp((t - 0.26) / 0.5, 0, 1);
-    }
+    // Strictly scroll-driven: the strike and the burst are both functions of
+    // scroll position, so nothing moves on its own.
+    const fall = smoothstep(t, 0.12, 0.26);
+    const burst = clamp((t - 0.26) / 0.5, 0, 1);
 
     const lift = REDUCED_MOTION ? 0 : Math.sin(time * 1.3) * 0.07 * (1 - fall);
     this.hammer.position.y = lerp(2.25 + lift, 0.72, fall);
@@ -1578,8 +1666,26 @@ export class CinematicScene {
     const machineGone = smoothstep(t, 0.22, 0.31);
     this.machine.visible = machineGone < 1;
     this.machine.scale.setScalar(lerp(0.35, 1, machineIn));
-    this.machine.rotation.y = t * Math.PI * 1.6;
+    this.machine.rotation.y = lerp(-1.2, 0, smoothstep(t, 0, 0.16));
     this._setOpacity(this.machine, fade * (1 - machineGone));
+
+    // Running gear: spins up as the machine finishes assembling.
+    const running = machineIn * (1 - machineGone);
+    const drive = time * 2.4 * running;
+    this.gears.forEach(({ gear, speed }) => {
+      gear.rotation.z = drive * speed;
+    });
+    this.piston.position.x = 0.26 + Math.sin(drive) * 0.055;
+    this.steam.forEach((puff, i) => {
+      const u = (time * 0.42 + puff.userData.offset) % 1;
+      puff.position.set(
+        this.stackTip.x + Math.sin(u * 3.2 + i) * 0.07 * u,
+        this.stackTip.y + u * 0.42,
+        this.stackTip.z
+      );
+      puff.scale.setScalar(0.1 + u * 0.4);
+      puff.material.opacity = Math.sin(u * Math.PI) * 0.4 * fade * running;
+    });
 
     // -- crate: four hinged panels fold up from flat, then the lid seats
     const fold = smoothstep(t, 0.15, 0.34);
@@ -1747,7 +1853,7 @@ export class CinematicScene {
     this.groupB.visible = bVis;
     this.groupC.visible = cVis;
 
-    if (aVis) this._updatePhaseA(p, time, p < 0.02);
+    if (aVis) this._updatePhaseA(p, time);
     else this.forge.intensity = 0; // only phase A drives it; don't leave it lit
     if (bVis) this._updatePhaseB(p - 1, time, dt);
     if (cVis) this._updatePhaseC(p - 2, time);
