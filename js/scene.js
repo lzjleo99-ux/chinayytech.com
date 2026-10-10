@@ -242,79 +242,186 @@ function steelMaps(maxAnisotropy) {
   return { normalMap, roughnessMap };
 }
 
-const RIB = 64;
+const PLANKS = 5;
+const OVERLAP = 0.14;
 
-// The rib pattern is identical for every container colour, so the Sobel pass runs
-// once and the resulting normal map is shared.
-function corrugationNormal(maxAnisotropy) {
+// A single continuous camera track. Each key's pose is shared by the segments on
+// either side of it, so there is no discontinuity at a phase boundary.
+const CAM_KEYS = [
+  { p: 0.0, pos: [2.5, 2.7, 7.9], look: [0, 1.45, 0] },
+  { p: 0.7, pos: [2.1, 2.4, 7.0], look: [0, 1.3, 0] },
+  { p: 1.0, pos: [1.5, 2.0, 6.3], look: [0, 0.95, 0] },
+  { p: 1.35, pos: [0.7, 1.75, 5.9], look: [0.15, 0.45, 0] },
+  { p: 1.7, pos: [0.45, 1.5, 6.7], look: [0.5, 0.12, -0.1] },
+  { p: 2.0, pos: [0.5, 1.2, 7.5], look: [0.55, 0, -0.55] },
+  { p: 2.45, pos: [0.25, 0.9, 8.4], look: [0.2, 0, -1.35] },
+  { p: 3.0, pos: [0, 0.5, 9.6], look: [0, 0, -2] },
+];
+
+const WOOD_TONES = [
+  { base: "#a87a46", plankA: "#b58550", plankB: "#a0723f", batten: "#8e6435" },
+  { base: "#9c7040", plankA: "#aa7c49", plankB: "#946a3a", batten: "#825a30" },
+  { base: "#b58c58", plankA: "#c09662", plankB: "#ab8250", batten: "#997345" },
+];
+
+// Plank layout is identical on every crate, so the Sobel pass runs once and the
+// resulting normal map is shared across all of them.
+function plankNormal(maxAnisotropy) {
   const w = 1024, h = 512;
   const { ctx } = canvas2d(w, h);
-  ctx.fillStyle = "#808080";
+  ctx.fillStyle = "#9a9a9a";
   ctx.fillRect(0, 0, w, h);
-  const rib = RIB / 2;
-  for (let x = 0; x < w; x += rib) {
-    const g = ctx.createLinearGradient(x, 0, x + rib, 0);
-    g.addColorStop(0, "#2a2a2a");
-    g.addColorStop(0.5, "#e2e2e2");
-    g.addColorStop(1, "#2a2a2a");
+
+  const ph = h / PLANKS;
+  for (let i = 0; i < PLANKS; i++) {
+    const y = i * ph;
+    const g = ctx.createLinearGradient(0, y, 0, y + ph);
+    g.addColorStop(0, "#6e6e6e");
+    g.addColorStop(0.12, "#c4c4c4");
+    g.addColorStop(0.88, "#b4b4b4");
+    g.addColorStop(1, "#5c5c5c");
     ctx.fillStyle = g;
-    ctx.fillRect(x, 0, rib, h);
+    ctx.fillRect(0, y + 3, w, ph - 6);
+    ctx.fillStyle = "#3a3a3a"; // groove between planks
+    ctx.fillRect(0, y, w, 3);
   }
-  const t = new THREE.CanvasTexture(sobelNormal(ctx, w, h, 1.5));
+  // Grain ridges
+  ctx.globalAlpha = 0.5;
+  for (let i = 0; i < 420; i++) {
+    const y = Math.random() * h;
+    ctx.strokeStyle = Math.random() > 0.5 ? "#d2d2d2" : "#707070";
+    ctx.lineWidth = 0.6 + Math.random() * 1.4;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    for (let x = 0; x <= w; x += 64) ctx.lineTo(x, y + Math.sin(x * 0.012 + i) * 3.5);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+  // Raised end battens
+  [0, w - 74].forEach((x) => {
+    const g = ctx.createLinearGradient(x, 0, x + 74, 0);
+    g.addColorStop(0, "#5a5a5a");
+    g.addColorStop(0.15, "#dcdcdc");
+    g.addColorStop(0.85, "#cfcfcf");
+    g.addColorStop(1, "#5a5a5a");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 0, 74, h);
+  });
+
+  const t = new THREE.CanvasTexture(sobelNormal(ctx, w, h, 2.2));
   t.anisotropy = maxAnisotropy;
   return t;
 }
 
 // Corrugated container side. Rendered large so the branding stays razor sharp;
 // text is drawn as vectors, so resolution costs nothing in download size.
-function containerAlbedo(baseColor, brand, maxAnisotropy) {
+// Industrial export crate: sawn planks, grain, knots, steel corner braces and a
+// stencilled mark. Drawn large so the stencil stays crisp — vector text costs
+// nothing in download size.
+function crateAlbedo(tone, brand, maxAnisotropy) {
   const w = 2048, h = 1024;
   const { c, ctx } = canvas2d(w, h);
-  const rib = RIB;
-  ctx.fillStyle = baseColor;
+  const ph = h / PLANKS;
+
+  ctx.fillStyle = tone.base;
   ctx.fillRect(0, 0, w, h);
 
-  for (let x = 0; x < w; x += rib) {
-    const g = ctx.createLinearGradient(x, 0, x + rib, 0);
-    g.addColorStop(0, "rgba(0,0,0,0.36)");
-    g.addColorStop(0.34, "rgba(255,255,255,0.13)");
-    g.addColorStop(0.66, "rgba(255,255,255,0.05)");
-    g.addColorStop(1, "rgba(0,0,0,0.36)");
-    ctx.fillStyle = g;
-    ctx.fillRect(x, 64, rib, h - 128);
+  for (let i = 0; i < PLANKS; i++) {
+    const y = i * ph;
+    ctx.fillStyle = i % 2 ? tone.plankA : tone.plankB;
+    ctx.fillRect(0, y + 6, w, ph - 12);
+
+    // Grain: long wavy fibres, denser and darker than the plank body.
+    for (let k = 0; k < 90; k++) {
+      const gy = y + 8 + Math.random() * (ph - 16);
+      const dark = Math.random() > 0.45;
+      ctx.strokeStyle = dark
+        ? `rgba(60,36,16,${0.05 + Math.random() * 0.16})`
+        : `rgba(226,190,140,${0.04 + Math.random() * 0.1})`;
+      ctx.lineWidth = 0.8 + Math.random() * 2.6;
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      const amp = 2 + Math.random() * 7;
+      const freq = 0.004 + Math.random() * 0.012;
+      const ph0 = Math.random() * 10;
+      for (let x = 0; x <= w; x += 48) ctx.lineTo(x, gy + Math.sin(x * freq + ph0) * amp);
+      ctx.stroke();
+    }
+
+    // Knots
+    if (Math.random() > 0.45) {
+      const kx = 180 + Math.random() * (w - 360);
+      const ky = y + ph * 0.5;
+      for (let r = 34; r > 0; r -= 4) {
+        ctx.strokeStyle = `rgba(74,44,18,${0.1 + (1 - r / 34) * 0.4})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.ellipse(kx, ky, r, r * 0.52, 0.3, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+
+    ctx.fillStyle = "rgba(38,22,10,0.62)"; // shadowed gap between planks
+    ctx.fillRect(0, y, w, 6);
   }
 
-  ctx.fillStyle = "rgba(0,0,0,0.44)";
-  ctx.fillRect(0, 0, w, 64);
-  ctx.fillRect(0, h - 64, w, 64);
-  ctx.fillStyle = "rgba(16,20,26,0.92)";
-  [[0, 0], [w - 136, 0], [0, h - 88], [w - 136, h - 88]].forEach(([x, y]) => ctx.fillRect(x, y, 136, 88));
-
-  for (let i = 0; i < 520; i++) {
-    ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`;
-    ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 170, Math.random() * 26);
-  }
-  for (let i = 0; i < 90; i++) {
-    ctx.fillStyle = `rgba(${90 + Math.random() * 60},${50 + Math.random() * 40},30,${Math.random() * 0.22})`;
-    const r = 6 + Math.random() * 30;
-    ctx.beginPath();
-    ctx.arc(Math.random() * w, Math.random() * h, r, 0, Math.PI * 2);
-    ctx.fill();
-  }
+  // Vertical end battens
+  [0, w - 74].forEach((x) => {
+    ctx.fillStyle = tone.batten;
+    ctx.fillRect(x, 0, 74, h);
+    for (let k = 0; k < 40; k++) {
+      ctx.fillStyle = `rgba(60,36,16,${Math.random() * 0.14})`;
+      ctx.fillRect(x, Math.random() * h, 74, 1 + Math.random() * 3);
+    }
+    ctx.fillStyle = "rgba(30,18,8,0.5)";
+    ctx.fillRect(x === 0 ? 72 : x - 2, 0, 3, h);
+  });
 
   if (brand) {
-    // System sans only: webfonts may not be rasterisable when this canvas is drawn.
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 14;
-    ctx.fillStyle = "rgba(255,255,255,0.97)";
-    ctx.font = "bold 176px Helvetica, Arial, sans-serif";
-    ctx.fillText("CHINA YY TECH", w / 2, h * 0.43);
-    ctx.fillStyle = "rgba(255,255,255,0.84)";
-    ctx.font = "500 76px Helvetica, Arial, sans-serif";
-    ctx.fillText("chinayytech.com", w / 2, h * 0.58);
-    ctx.shadowBlur = 0;
+    ctx.fillStyle = "rgba(24,26,30,0.84)";
+    ctx.font = "bold 150px Helvetica, Arial, sans-serif";
+    ctx.fillText("CHINA YY TECH", w / 2, h * 0.4);
+    ctx.fillStyle = "rgba(24,26,30,0.7)";
+    ctx.font = "500 62px Helvetica, Arial, sans-serif";
+    ctx.fillText("chinayytech.com", w / 2, h * 0.56);
+    ctx.strokeStyle = "rgba(24,26,30,0.45)";
+    ctx.lineWidth = 5;
+    ctx.strokeRect(w * 0.26, h * 0.27, w * 0.48, h * 0.4);
+    // Break the ink up so it reads as stencilled onto timber, not printed on.
+    ctx.globalCompositeOperation = "destination-out";
+    for (let i = 0; i < 420; i++) {
+      ctx.fillStyle = `rgba(0,0,0,${0.1 + Math.random() * 0.5})`;
+      ctx.fillRect(w * 0.24 + Math.random() * w * 0.52, h * 0.25 + Math.random() * h * 0.45, 2 + Math.random() * 14, 1 + Math.random() * 5);
+    }
+    ctx.globalCompositeOperation = "source-over";
+  }
+
+  // Steel corner braces with bolts
+  const bw = 190, bh = 120;
+  [[0, 0], [w - bw, 0], [0, h - bh], [w - bw, h - bh]].forEach(([bx, by]) => {
+    const g = ctx.createLinearGradient(bx, by, bx + bw, by + bh);
+    g.addColorStop(0, "#4a515c");
+    g.addColorStop(0.5, "#2b313a");
+    g.addColorStop(1, "#1a1f26");
+    ctx.fillStyle = g;
+    ctx.fillRect(bx, by, bw, 34);
+    ctx.fillRect(bx, by, 34, bh);
+    ctx.fillStyle = "rgba(255,255,255,0.12)";
+    ctx.fillRect(bx, by + (by === 0 ? 32 : 0), bw, 2);
+    ctx.fillStyle = "#11151a";
+    [[bx + 17, by + 17], [bx + bw - 24, by + 17], [bx + 17, by + bh - 24]].forEach(([px, py]) => {
+      ctx.beginPath();
+      ctx.arc(px, py, 9, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+
+  // Scuffs and dirt
+  for (let i = 0; i < 260; i++) {
+    ctx.fillStyle = `rgba(42,26,12,${Math.random() * 0.1})`;
+    ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 150, Math.random() * 18);
   }
 
   const map = new THREE.CanvasTexture(c);
@@ -487,6 +594,10 @@ export class CinematicScene {
     this._mouseTarget = new THREE.Vector2();
     this._camTarget = new THREE.Vector3();
     this._camBase = new THREE.Vector3();
+    this._camPos = new THREE.Vector3();
+    this._camLook = new THREE.Vector3();
+    this._camReady = false;
+    this._targetProgress = 0;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -682,6 +793,36 @@ export class CinematicScene {
     this.scene.add(this.forge);
 
     this.scene.add(new THREE.AmbientLight(0x243047, 1.1));
+  }
+
+  // Wood is never metallic and always fairly rough; the plank normal map is shared
+  // and the per-tone face materials are built once and reused across every crate.
+  _crateMaterial(toneIndex) {
+    if (!this._crateCache) {
+      this._crateCache = new Map();
+      this._plankNormal = plankNormal(this._maxAniso);
+      const mk = (map, rough) => {
+        const m = new THREE.MeshStandardMaterial({
+          map,
+          normalMap: this._plankNormal,
+          metalness: 0.04,
+          roughness: rough,
+          transparent: true,
+          envMapIntensity: 0.75,
+        });
+        m.normalScale.set(1.1, 1.1);
+        return m;
+      };
+      this._crateTop = mk(crateAlbedo(WOOD_TONES[1], false, this._maxAniso), 0.88);
+      this._crateEnd = mk(crateAlbedo(WOOD_TONES[2], false, this._maxAniso), 0.85);
+      this._crateMk = mk;
+    }
+    if (this._crateCache.has(toneIndex)) return this._crateCache.get(toneIndex);
+    const side = this._crateMk(crateAlbedo(WOOD_TONES[toneIndex], true, this._maxAniso), 0.82);
+    // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
+    const mats = [this._crateEnd, this._crateEnd, this._crateTop, this._crateTop, side, side];
+    this._crateCache.set(toneIndex, mats);
+    return mats;
   }
 
   _steelMaterial(color, metalness, roughness) {
@@ -911,7 +1052,7 @@ export class CinematicScene {
     this.machine = machine;
     g.add(machine);
 
-    this.crate = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.35, 1.65), this._steelMaterial(0xb33b2e, 0.55, 0.52));
+    this.crate = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.35, 1.65), this._crateMaterial(0));
     this.crate.castShadow = !LOW_POWER;
     g.add(this.crate);
 
@@ -968,38 +1109,14 @@ export class CinematicScene {
     funnelBand.position.set(2.62, 1.68, 0);
     ship.add(house, bridge, funnel, funnelBand);
 
-    const ribNormal = corrugationNormal(this._maxAniso);
-    const mk = (map, rough) => {
-      const m = new THREE.MeshStandardMaterial({
-        map,
-        normalMap: ribNormal,
-        metalness: 0.5,
-        roughness: rough,
-        transparent: true,
-        envMapIntensity: 1.15,
-      });
-      m.normalScale.set(0.9, 0.9);
-      return m;
-    };
-    const top = mk(containerAlbedo("#9aa1a9", false, this._maxAniso), 0.6);
-    const end = mk(containerAlbedo("#8b9199", false, this._maxAniso), 0.55);
-    const matCache = new Map();
-    const containerMat = (hex) => {
-      if (matCache.has(hex)) return matCache.get(hex);
-      const side = mk(containerAlbedo(hex, true, this._maxAniso), 0.5);
-      // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
-      const mats = [end, end, top, top, side, side];
-      matCache.set(hex, mats);
-      return mats;
-    };
-    const palette = ["#b33b2e", "#0e7490", "#b45309", "#3c6e4f"];
     const boxGeo = new THREE.BoxGeometry(1.28, 0.62, 0.76);
     let n = 0;
     for (let bay = 0; bay < 3; bay++) {
       for (let row = 0; row < 2; row++) {
         for (let tier = 0; tier < 2; tier++) {
-          const box = new THREE.Mesh(boxGeo, containerMat(palette[n % palette.length]));
+          const box = new THREE.Mesh(boxGeo, this._crateMaterial(n % WOOD_TONES.length));
           box.position.set(-2.35 + bay * 1.34, 0.74 + tier * 0.64, row === 0 ? 0.41 : -0.41);
+          box.rotation.y = (Math.random() - 0.5) * 0.03;
           ship.add(box);
           n++;
         }
@@ -1184,7 +1301,7 @@ export class CinematicScene {
   }
 
   setProgress(p) {
-    this.progress = clamp(p, 0, 3);
+    this._targetProgress = clamp(p, 0, 3);
   }
 
   _fade(group, opacity) {
@@ -1196,7 +1313,7 @@ export class CinematicScene {
   }
 
   _updatePhaseA(t, time, looping) {
-    const fade = 1 - smoothstep(t, 0.86, 1);
+    const fade = 1 - smoothstep(t, 1 - OVERLAP, 1 + OVERLAP);
     this._fade(this.groupA, fade);
 
     // Before the user scrolls, the strike runs on a loop so the first thing on
@@ -1238,11 +1355,11 @@ export class CinematicScene {
     this._shake = burst > 0 && burst < 0.35 ? (1 - burst / 0.35) * 0.2 : 0;
   }
 
-  _updatePhaseB(t, time, dt) {
+  _updatePhaseB(raw, time, dt) {
     this._shake = 0;
-    this.forge.intensity = 0;
-    const fade = smoothstep(t, 0, 0.08) * (1 - smoothstep(t, 0.9, 1));
+    const fade = smoothstep(raw, -OVERLAP, OVERLAP) * (1 - smoothstep(raw, 1 - OVERLAP, 1 + OVERLAP));
     this._fade(this.groupB, fade);
+    const t = clamp(raw, 0, 1);
 
     this.machine.visible = t < 0.44;
     this.machine.scale.setScalar(lerp(0.4, 1, smoothstep(t, 0, 0.16)));
@@ -1266,10 +1383,10 @@ export class CinematicScene {
     }
   }
 
-  _updatePhaseC(t, time) {
+  _updatePhaseC(raw, time) {
     this._shake = 0;
-    this.forge.intensity = 0;
-    const fade = smoothstep(t, 0, 0.1);
+    const t = clamp(raw, 0, 1);
+    const fade = smoothstep(raw, -OVERLAP, OVERLAP);
     this.globe.material.opacity = fade;
     this.atmoMat.uniforms.uIntensity.value = fade * 0.95;
     if (this.clouds) this.clouds.material.opacity = fade * 0.42;
@@ -1287,28 +1404,45 @@ export class CinematicScene {
     this.originMarker.material.opacity = fade;
   }
 
-  _updateCamera(p, time) {
-    if (p < 1) {
-      this._camBase.set(2.5, 2.7, lerp(7.9, 7.1, p));
-      this._camTarget.set(0, 1.45, 0);
-    } else if (p < 2) {
-      const t = p - 1;
-      this._camBase.set(lerp(-0.6, 1.8, t), lerp(1.8, 1.3, t), lerp(5.4, 7.6, t));
-      this._camTarget.set(lerp(0, 1.2, t), 0, 0);
-    } else {
-      const t = p - 2;
-      this._camBase.set(0, lerp(1.0, 0.5, t), lerp(6.8, 9.4, t));
-      this._camTarget.set(0, 0, -2);
-    }
+  _updateCamera(p, time, dt) {
+    // One continuous track across the whole storyboard. The old per-phase blocks
+    // each defined their own start pose, so the camera teleported at p=1 and p=2.
+    let i = 0;
+    while (i < CAM_KEYS.length - 2 && p > CAM_KEYS[i + 1].p) i++;
+    const a = CAM_KEYS[i];
+    const b = CAM_KEYS[i + 1];
+    const u = smoothstep(p, a.p, b.p);
+    this._camBase.set(
+      lerp(a.pos[0], b.pos[0], u),
+      lerp(a.pos[1], b.pos[1], u),
+      lerp(a.pos[2], b.pos[2], u)
+    );
+    this._camTarget.set(
+      lerp(a.look[0], b.look[0], u),
+      lerp(a.look[1], b.look[1], u),
+      lerp(a.look[2], b.look[2], u)
+    );
 
     const offset = this._camBase.clone().sub(this._camTarget).multiplyScalar(this._zBoost);
-    this.camera.position.copy(this._camTarget).add(offset);
-
+    const desired = this._camTarget.clone().add(offset);
     if (!REDUCED_MOTION) {
-      this.camera.position.x += this._mouse.x * 0.55;
-      this.camera.position.y += -this._mouse.y * 0.35 + Math.sin(time * 0.4) * 0.06;
+      desired.x += this._mouse.x * 0.55;
+      desired.y += -this._mouse.y * 0.35 + Math.sin(time * 0.4) * 0.06;
     }
-    this.camera.lookAt(this._camTarget);
+
+    if (!this._camReady) {
+      this._camPos.copy(desired);
+      this._camLook.copy(this._camTarget);
+      this._camReady = true;
+    } else {
+      // Frame-rate independent damping: the same smoothing at 30fps and 144fps.
+      const k = 1 - Math.pow(0.0009, dt);
+      this._camPos.lerp(desired, k);
+      this._camLook.lerp(this._camTarget, k);
+    }
+
+    this.camera.position.copy(this._camPos);
+    this.camera.lookAt(this._camLook);
 
     if (this._shake > 0) {
       this.camera.position.x += (Math.random() - 0.5) * this._shake;
@@ -1321,6 +1455,9 @@ export class CinematicScene {
 
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const time = this.clock.getElapsedTime();
+    // Smooth the scroll value once, here, so the camera, fades and object
+    // animations all inherit the same easing instead of tracking raw scroll.
+    this.progress += (this._targetProgress - this.progress) * (1 - Math.pow(0.0025, dt));
     const p = this.progress;
 
     this._mouse.lerp(this._mouseTarget, REDUCED_MOTION ? 0 : 0.06);
@@ -1336,16 +1473,22 @@ export class CinematicScene {
     this.backdrop.material.opacity = 0.82 - space * 0.72;
     this.dust.material.opacity = 0.32 * (1 - space * 0.6);
 
-    const phase = p < 1 ? 0 : p < 2 ? 1 : 2;
-    this.groupA.visible = phase === 0;
-    this.groupB.visible = phase === 1;
-    this.groupC.visible = phase === 2;
+    // Overlap windows so consecutive phases dissolve into each other. Previously
+    // each group was toggled on exactly where the last one switched off, so the
+    // opacity ramps never actually overlapped and the cut was visible.
+    const aVis = p < 1 + OVERLAP;
+    const bVis = p > 1 - OVERLAP && p < 2 + OVERLAP;
+    const cVis = p > 2 - OVERLAP;
+    this.groupA.visible = aVis;
+    this.groupB.visible = bVis;
+    this.groupC.visible = cVis;
 
-    if (phase === 0) this._updatePhaseA(p, time, p < 0.02);
-    else if (phase === 1) this._updatePhaseB(p - 1, time, dt);
-    else this._updatePhaseC(Math.min(p - 2, 1), time);
+    if (aVis) this._updatePhaseA(p, time, p < 0.02);
+    else this.forge.intensity = 0; // only phase A drives it; don't leave it lit
+    if (bVis) this._updatePhaseB(p - 1, time, dt);
+    if (cVis) this._updatePhaseC(p - 2, time);
 
-    this._updateCamera(p, time);
+    this._updateCamera(p, time, dt);
 
     if (this.composer) this.composer.render(dt);
     else this.renderer.render(this.scene, this.camera);
