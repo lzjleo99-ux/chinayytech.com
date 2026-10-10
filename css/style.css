@@ -203,11 +203,11 @@ img, canvas { display: block; max-width: 100%; }
   /* Scroll length sets playback speed: this height minus one viewport is the
      whole three-phase timeline. 320vh gave each phase only ~73vh, far too fast. */
   position: relative;
-  height: 900vh;
+  height: 1200vh;
   background: #000;
 }
 @media (max-width: 820px) {
-  .storyboard { height: 620vh; }
+  .storyboard { height: 820vh; }
 }
 .storyboard__stage {
   position: sticky;

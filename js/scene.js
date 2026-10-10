@@ -251,9 +251,12 @@ const CAM_KEYS = [
   { p: 0.0, pos: [2.5, 2.7, 7.9], look: [0, 1.45, 0] },
   { p: 0.7, pos: [2.1, 2.4, 7.0], look: [0, 1.3, 0] },
   { p: 1.0, pos: [1.5, 1.6, 3.9], look: [0, 0.66, 0] },
-  { p: 1.3, pos: [1.9, 1.5, 4.3], look: [0.5, 0.62, 0] },
-  { p: 1.55, pos: [2.2, 1.7, 5.2], look: [0.9, 0.6, 0] },
-  { p: 1.78, pos: [1.0, 3.3, 11.2], look: [-1.1, 1.15, 0] },
+  { p: 1.18, pos: [1.05, 1.28, 2.9], look: [0.08, 0.62, 0] },
+  { p: 1.32, pos: [1.25, 1.35, 3.2], look: [0.05, 0.6, 0] },
+  { p: 1.52, pos: [1.8, 1.55, 4.5], look: [0.25, 0.6, 0] },
+  { p: 1.7, pos: [2.3, 1.7, 5.6], look: [0.95, 0.6, 0] },
+  { p: 1.79, pos: [1.75, 2.35, 8.1], look: [0.2, 0.9, 0] },
+  { p: 1.9, pos: [1.0, 3.3, 11.2], look: [-1.1, 1.15, 0] },
   { p: 2.0, pos: [0.4, 1.6, 10.4], look: [-0.6, 0.2, -0.5] },
   { p: 2.45, pos: [0.25, 0.9, 8.8], look: [0.2, 0, -1.35] },
   { p: 3.0, pos: [0, 0.5, 9.6], look: [0, 0, -2] },
@@ -1661,11 +1664,11 @@ export class CinematicScene {
     //  .80-1.0 ship sails out
 
     // -- machine
-    const machineIn = smoothstep(t, 0, 0.14);
-    const machineGone = smoothstep(t, 0.22, 0.31);
+    const machineIn = smoothstep(t, 0, 0.1);
+    const machineGone = smoothstep(t, 0.36, 0.45);
     this.machine.visible = machineGone < 1;
     this.machine.scale.setScalar(lerp(0.35, 1, machineIn));
-    this.machine.rotation.y = lerp(-1.2, 0, smoothstep(t, 0, 0.16));
+    this.machine.rotation.y = lerp(-1.2, 0, smoothstep(t, 0, 0.3));
     this._setOpacity(this.machine, fade * (1 - machineGone));
 
     // Running gear: spins up as the machine finishes assembling.
@@ -1687,11 +1690,11 @@ export class CinematicScene {
     });
 
     // -- crate: four hinged panels fold up from flat, then the lid seats
-    const fold = smoothstep(t, 0.15, 0.34);
-    const lidDown = smoothstep(t, 0.3, 0.4);
-    const intoBox = smoothstep(t, 0.52, 0.64);
-    const crateGone = smoothstep(t, 0.66, 0.72);
-    this.crate.visible = t > 0.1 && crateGone < 1;
+    const fold = smoothstep(t, 0.3, 0.44);
+    const lidDown = smoothstep(t, 0.41, 0.5);
+    const intoBox = smoothstep(t, 0.6, 0.69);
+    const crateGone = smoothstep(t, 0.71, 0.76);
+    this.crate.visible = t > 0.26 && crateGone < 1;
     this.cratePanels.forEach(({ pivot, axis, sign, closed, open }) => {
       pivot.position.lerpVectors(open, closed, fold);
       pivot.rotation[axis] = sign * 0.78 * (1 - fold);
@@ -1702,26 +1705,27 @@ export class CinematicScene {
     this._setOpacity(this.crate, fade * (1 - crateGone));
 
     // -- container rolls in, opens, closes
-    const boxIn = smoothstep(t, 0.38, 0.48);
-    const doorsOpen = smoothstep(t, 0.46, 0.54) * (1 - smoothstep(t, 0.64, 0.7));
+    const boxIn = smoothstep(t, 0.48, 0.56);
+    const doorsOpen = smoothstep(t, 0.55, 0.61) * (1 - smoothstep(t, 0.69, 0.74));
     this.heroContainer.visible = boxIn > 0;
     this.containerDoors.forEach(({ pivot, side }) => {
       pivot.rotation.y = side * 1.95 * doorsOpen;
     });
 
     // -- ship berths well before the lift, departs well after it lands
-    const berth = smoothstep(t, 0.44, 0.62);
-    const depart = smoothstep(t, 0.9, 1);
+    const berth = smoothstep(t, 0.5, 0.68);
+    // raw, not clamped t: the departure carries on through the crossfade to phase 3.
+    const depart = smoothstep(raw, 0.95, 1.14);
     this.ship.visible = berth > 0;
-    this.water.visible = t > 0.3;
-    this._setOpacity(this.water, fade * smoothstep(t, 0.3, 0.44));
+    this.water.visible = t > 0.36;
+    this._setOpacity(this.water, fade * smoothstep(t, 0.36, 0.5));
     this.ship.position.x = lerp(-12, -3.8, berth) + depart * 11;
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
 
     // -- crane: one path, three strictly sequential legs (rise, traverse, lower).
     // Blending overlapping lerps on the same axis made the lift bump mid-move.
-    const h = smoothstep(t, 0.7, 0.9);
+    const h = smoothstep(t, 0.74, 0.97);
     const slotX = this.ship.position.x + this.deckSlot.x;
     const slotY = this.ship.position.y + this.deckSlot.y;
     const slotZ = this.deckSlot.z;
@@ -1735,7 +1739,7 @@ export class CinematicScene {
       lerp(0.62, cruiseY, smoothstep(h, 0, 0.34)) + (slotY - cruiseY) * smoothstep(h, 0.68, 1);
     this.heroContainer.position.set(boxIn > 0 && h <= 0 ? lerp(5.6, 1.55, boxIn) : cx, cy, cz);
 
-    const hooked = smoothstep(t, 0.66, 0.72);
+    const hooked = smoothstep(t, 0.7, 0.76);
     this.crane.visible = hooked > 0 && h < 0.995;
     if (this.crane.visible) {
       const topY = 5.2;
