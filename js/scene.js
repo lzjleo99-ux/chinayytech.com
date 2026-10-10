@@ -1145,15 +1145,15 @@ export class CinematicScene {
     // Everything is sized so it genuinely nests: machine fits the crate, crate
     // fits the container, container fits a deck slot. No scale cheats.
     const machine = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.44, 0.46), this._steelMaterial(0xdde3ea, 0.85, 0.28));
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.36, 0.40), this._steelMaterial(0xdde3ea, 0.85, 0.28));
     const drum = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.15, 0.15, 0.5, 32),
+      new THREE.CylinderGeometry(0.12, 0.12, 0.42, 32),
       this._steelMaterial(0xf59e0b, 0.9, 0.28)
     );
     drum.rotation.z = Math.PI / 2;
-    drum.position.x = 0.26;
-    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.52), this._steelMaterial(0x39414c, 0.8, 0.45));
-    foot.position.y = -0.25;
+    drum.position.x = 0.22;
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.05, 0.44), this._steelMaterial(0x39414c, 0.8, 0.45));
+    foot.position.y = -0.16;
     machine.add(shell, drum, foot);
     machine.position.set(0, 0.62, 0);
     machine.traverse((m) => {
@@ -1162,16 +1162,44 @@ export class CinematicScene {
     this.machine = machine;
     g.add(machine);
 
-    // Wooden export crate: walls rise around the machine, then the lid seats.
+    // Wooden export crate built as a real flat-pack: a base with four side panels
+    // hinged along its edges. They start splayed flat and fold up to enclose the
+    // machine, then the lid seats. Scaling a solid box just reads as a growing block.
+    const CW = 1.04, CH = 0.54, CD = 0.62, CT = 0.05;
     const crate = new THREE.Group();
-    this.crateBody = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.56, 0.68), this._crateMaterial(0));
-    this.crateLid = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.08, 0.72), this._crateMaterial(1));
-    crate.add(this.crateBody, this.crateLid);
+    const base = new THREE.Mesh(new THREE.BoxGeometry(CW, CT, CD), this._crateMaterial(0));
+    base.position.y = -CH / 2;
+    crate.add(base);
+
+    this.cratePanels = [];
+    const addPanel = (geo, pivotPos, panelPos, axis, openAngle) => {
+      const pivot = new THREE.Group();
+      pivot.position.copy(pivotPos);
+      const panel = new THREE.Mesh(geo, this._crateMaterial(1));
+      panel.position.copy(panelPos);
+      pivot.add(panel);
+      crate.add(pivot);
+      this.cratePanels.push({ pivot, axis, openAngle });
+    };
+    const longGeo = new THREE.BoxGeometry(CW, CH, CT);
+    const endGeo = new THREE.BoxGeometry(CT, CH, CD);
+    const hingeY = -CH / 2 + CT / 2;
+    addPanel(longGeo, new THREE.Vector3(0, hingeY, CD / 2), new THREE.Vector3(0, CH / 2, 0), "x", Math.PI / 2);
+    addPanel(longGeo, new THREE.Vector3(0, hingeY, -CD / 2), new THREE.Vector3(0, CH / 2, 0), "x", -Math.PI / 2);
+    addPanel(endGeo, new THREE.Vector3(CW / 2, hingeY, 0), new THREE.Vector3(0, CH / 2, 0), "z", -Math.PI / 2);
+    addPanel(endGeo, new THREE.Vector3(-CW / 2, hingeY, 0), new THREE.Vector3(0, CH / 2, 0), "z", Math.PI / 2);
+
+    this.crateLid = new THREE.Mesh(new THREE.BoxGeometry(CW + 0.04, CT, CD + 0.04), this._crateMaterial(2));
+    this.crateLid.position.y = CH / 2;
+    crate.add(this.crateLid);
+
     crate.position.set(0, 0.62, 0);
+    crate.renderOrder = 0;
     crate.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
     this.crate = crate;
+    this.crateTop = CH / 2;
     g.add(crate);
 
     // Hero shipping container with doors that actually swing.
@@ -1193,6 +1221,9 @@ export class CinematicScene {
       this.containerDoors.push({ pivot, side });
     });
     container.position.set(1.55, 0.62, 0);
+    // Draw after the crate so the steel always occludes the timber inside it,
+    // regardless of how the transparent sort happens to order them.
+    container.renderOrder = 2;
     container.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
@@ -1536,65 +1567,67 @@ export class CinematicScene {
 
     // -- machine
     const machineIn = smoothstep(t, 0, 0.14);
-    const machineGone = smoothstep(t, 0.2, 0.3);
+    const machineGone = smoothstep(t, 0.22, 0.31);
     this.machine.visible = machineGone < 1;
     this.machine.scale.setScalar(lerp(0.35, 1, machineIn));
     this.machine.rotation.y = t * Math.PI * 1.6;
     this._setOpacity(this.machine, fade * (1 - machineGone));
 
-    // -- crate: walls grow up around the machine, then the lid seats
-    const crateUp = smoothstep(t, 0.16, 0.32);
-    const lidDown = smoothstep(t, 0.26, 0.38);
-    const intoBox = smoothstep(t, 0.48, 0.6);
-    const crateGone = smoothstep(t, 0.59, 0.65);
-    this.crate.visible = crateUp > 0 && crateGone < 1;
-    this.crateBody.scale.y = Math.max(crateUp, 0.001);
-    // grow from the floor rather than the centre
-    this.crateBody.position.y = -0.28 + 0.28 * crateUp;
-    this.crateLid.position.y = lerp(0.95, 0.3, lidDown);
-    this.crateLid.scale.setScalar(lidDown > 0 ? 1 : 0.001);
+    // -- crate: four hinged panels fold up from flat, then the lid seats
+    const fold = smoothstep(t, 0.15, 0.34);
+    const lidDown = smoothstep(t, 0.3, 0.4);
+    const intoBox = smoothstep(t, 0.52, 0.64);
+    const crateGone = smoothstep(t, 0.66, 0.72);
+    this.crate.visible = t > 0.1 && crateGone < 1;
+    this.cratePanels.forEach(({ pivot, axis, openAngle }) => {
+      pivot.rotation[axis] = openAngle * (1 - fold);
+    });
+    this.crateLid.position.y = lerp(1.0, this.crateTop, lidDown);
+    this.crateLid.visible = lidDown > 0.001;
     this.crate.position.x = lerp(0, 1.55, intoBox);
-    this.crate.position.y = 0.62;
     this._setOpacity(this.crate, fade * (1 - crateGone));
 
     // -- container rolls in, opens, closes
-    const boxIn = smoothstep(t, 0.3, 0.44);
-    const doorsOpen = smoothstep(t, 0.42, 0.52) * (1 - smoothstep(t, 0.62, 0.7));
+    const boxIn = smoothstep(t, 0.38, 0.48);
+    const doorsOpen = smoothstep(t, 0.46, 0.54) * (1 - smoothstep(t, 0.64, 0.7));
     this.heroContainer.visible = boxIn > 0;
-    this.heroContainer.position.x = lerp(5.6, 1.55, boxIn);
     this.containerDoors.forEach(({ pivot, side }) => {
       pivot.rotation.y = side * 1.95 * doorsOpen;
     });
 
-    // -- ship berths, then departs
-    const berth = smoothstep(t, 0.46, 0.66);
-    const depart = smoothstep(t, 0.82, 1);
+    // -- ship berths well before the lift, departs well after it lands
+    const berth = smoothstep(t, 0.44, 0.62);
+    const depart = smoothstep(t, 0.9, 1);
     this.ship.visible = berth > 0;
-    this.water.visible = t > 0.34;
-    this._setOpacity(this.water, fade * smoothstep(t, 0.34, 0.46));
-    this.ship.position.x = lerp(-9, -0.6, berth) + depart * 9.5;
+    this.water.visible = t > 0.3;
+    this._setOpacity(this.water, fade * smoothstep(t, 0.3, 0.44));
+    this.ship.position.x = lerp(-9, -0.6, berth) + depart * 10;
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
 
-    // -- crane lift: hook drops, container rises, traverses, settles in the slot
-    const hooked = smoothstep(t, 0.64, 0.7);
-    const lift = smoothstep(t, 0.68, 0.78);
-    const settle = smoothstep(t, 0.76, 0.86);
+    // -- crane: one path, three strictly sequential legs (rise, traverse, lower).
+    // Blending overlapping lerps on the same axis made the lift bump mid-move.
+    const h = smoothstep(t, 0.7, 0.9);
     const slotX = this.ship.position.x + this.deckSlot.x;
     const slotY = this.ship.position.y + this.deckSlot.y;
-    if (lift > 0) {
-      this.heroContainer.position.x = lerp(1.55, slotX, settle);
-      this.heroContainer.position.y = lerp(0.62, 2.9, lift) - (2.9 - slotY) * settle;
-      this.heroContainer.position.z = lerp(0, this.deckSlot.z, settle);
-    }
-    this.crane.visible = hooked > 0 && settle < 1;
+    const slotZ = this.deckSlot.z;
+    const cruiseY = 2.9;
+    const across = smoothstep(h, 0.3, 0.74);
+    const cx = lerp(1.55, slotX, across);
+    const cz = lerp(0, slotZ, across);
+    const cy =
+      lerp(0.62, cruiseY, smoothstep(h, 0, 0.38)) + (slotY - cruiseY) * smoothstep(h, 0.62, 1);
+    this.heroContainer.position.set(boxIn > 0 && h <= 0 ? lerp(5.6, 1.55, boxIn) : cx, cy, cz);
+
+    const hooked = smoothstep(t, 0.66, 0.72);
+    this.crane.visible = hooked > 0 && h < 0.995;
     if (this.crane.visible) {
-      const topY = 4.6;
-      const hookY = this.heroContainer.position.y + 0.5;
-      this.craneHook.position.set(this.heroContainer.position.x, hookY, this.heroContainer.position.z);
-      this.craneCable.position.set(this.heroContainer.position.x, (topY + hookY) / 2, this.heroContainer.position.z);
+      const topY = 5.2;
+      const hookY = cy + 0.52;
+      this.craneHook.position.set(cx, hookY, cz);
+      this.craneCable.position.set(cx, (topY + hookY) / 2, cz);
       this.craneCable.scale.y = Math.max(topY - hookY, 0.01);
-      this._setOpacity(this.crane, fade * hooked * (1 - settle * 0.9));
+      this._setOpacity(this.crane, fade * hooked * (1 - smoothstep(h, 0.9, 1)));
     }
 
     if (this.waterNormal) {
