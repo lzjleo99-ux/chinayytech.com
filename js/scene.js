@@ -112,7 +112,7 @@ export class CinematicScene {
     const key = new THREE.DirectionalLight(0xfff2d9, 2.2);
     key.position.set(4, 6, 5);
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x5588ff, 0.6);
+    const rim = new THREE.DirectionalLight(0x3b82f6, 0.6);
     rim.position.set(-6, 2, -4);
     this.scene.add(rim);
     this.scene.add(new THREE.AmbientLight(0x202633, 1.1));
@@ -155,7 +155,7 @@ export class CinematicScene {
     geo.setAttribute("velocity", new THREE.BufferAttribute(vel, 3));
     geo.userData.basePos = pos.slice();
     const mat = new THREE.PointsMaterial({
-      color: 0xffb04a,
+      color: 0xf59e0b,
       size: 0.045,
       transparent: true,
       opacity: 0,
@@ -178,7 +178,7 @@ export class CinematicScene {
 
     const machine = new THREE.Group();
     const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd9dee5, metalness: 0.6, roughness: 0.3 });
-    const accentMat = new THREE.MeshStandardMaterial({ color: 0xe8b24d, metalness: 0.5, roughness: 0.3 });
+    const accentMat = new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.5, roughness: 0.3 });
     machine.add(new THREE.Mesh(new THREE.BoxGeometry(1.4, 1, 1), bodyMat));
     const drum = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 20), accentMat);
     drum.rotation.z = Math.PI / 2;
@@ -201,7 +201,7 @@ export class CinematicScene {
       new THREE.MeshStandardMaterial({ color: 0x25303d, metalness: 0.4, roughness: 0.6 })
     );
     ship.add(hull);
-    const containerColors = [0xb33b2e, 0x2f6b8f, 0xe8b24d, 0x3c6e4f];
+    const containerColors = [0xb33b2e, 0x06b6d4, 0xf59e0b, 0x3c6e4f];
     for (let i = 0; i < 10; i++) {
       const c = new THREE.Mesh(
         new THREE.BoxGeometry(0.8, 0.6, 1.3),
@@ -245,7 +245,7 @@ export class CinematicScene {
 
     const atmo = new THREE.Mesh(
       new THREE.SphereGeometry(R * 1.04, 32, 32),
-      new THREE.MeshBasicMaterial({ color: 0x4d8fe8, transparent: true, opacity: 0.12, side: THREE.BackSide })
+      new THREE.MeshBasicMaterial({ color: 0x06b6d4, transparent: true, opacity: 0.12, side: THREE.BackSide })
     );
     g.add(atmo);
 
@@ -255,7 +255,7 @@ export class CinematicScene {
       const targetVec = latLonToVec3(office.lat, office.lon, R);
       const curve = makeArcCurve(originVec, targetVec, R);
       const tubeGeo = new THREE.TubeGeometry(curve, 64, 0.012, 6, false);
-      const mat = new THREE.MeshBasicMaterial({ color: 0xffd37a, transparent: true, opacity: 0.95 });
+      const mat = new THREE.MeshBasicMaterial({ color: 0xffc04d, transparent: true, opacity: 0.95 });
       const mesh = new THREE.Mesh(tubeGeo, mat);
       mesh.geometry.setDrawRange(0, 0);
       mesh.userData.maxIndex = tubeGeo.index.count;
@@ -264,7 +264,7 @@ export class CinematicScene {
 
       const dot = new THREE.Mesh(
         new THREE.SphereGeometry(0.035, 10, 10),
-        new THREE.MeshBasicMaterial({ color: 0xffd37a })
+        new THREE.MeshBasicMaterial({ color: 0xffc04d })
       );
       dot.position.copy(targetVec);
       dot.visible = false;
@@ -274,7 +274,7 @@ export class CinematicScene {
 
     const originDot = new THREE.Mesh(
       new THREE.SphereGeometry(0.045, 10, 10),
-      new THREE.MeshBasicMaterial({ color: 0xff7a3c })
+      new THREE.MeshBasicMaterial({ color: 0xf59e0b })
     );
     originDot.position.copy(originVec);
     g.add(originDot);

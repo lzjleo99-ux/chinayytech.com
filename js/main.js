@@ -26,12 +26,14 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   const captions = Array.from(document.querySelectorAll(".storyboard__caption"));
+  const hudPhases = Array.from(document.querySelectorAll(".hud-phase"));
   const stage = document.querySelector(".storyboard");
   const hint = document.querySelector(".storyboard__scroll-hint");
 
   function setActiveCaption(progress) {
     const phase = Math.min(2, Math.floor(progress));
     captions.forEach((c, i) => c.classList.toggle("is-active", i === phase));
+    hudPhases.forEach((el, i) => el.classList.toggle("is-active", i === phase));
     if (hint) hint.style.opacity = progress > 0.08 ? "0" : "0.7";
   }
 
