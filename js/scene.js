@@ -82,6 +82,34 @@ function glowTexture() {
   return t;
 }
 
+function smokeTexture() {
+  const s = 256;
+  const { c, ctx } = canvas2d(s, s);
+  for (let i = 0; i < 26; i++) {
+    const x = s / 2 + (Math.random() - 0.5) * s * 0.44;
+    const y = s / 2 + (Math.random() - 0.5) * s * 0.44;
+    const r = s * (0.12 + Math.random() * 0.26);
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, `rgba(255,255,255,${0.1 + Math.random() * 0.12})`);
+    g.addColorStop(1, "rgba(255,255,255,0)");
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  // Fade the rim so the sprite never shows a hard square edge.
+  const mask = ctx.createRadialGradient(s / 2, s / 2, s * 0.16, s / 2, s / 2, s * 0.5);
+  mask.addColorStop(0, "rgba(0,0,0,0)");
+  mask.addColorStop(1, "rgba(0,0,0,1)");
+  ctx.globalCompositeOperation = "destination-out";
+  ctx.fillStyle = mask;
+  ctx.fillRect(0, 0, s, s);
+  ctx.globalCompositeOperation = "source-over";
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
 // Equirectangular studio lighting. Feeds PMREM so metal has something real to reflect.
 function envCanvas() {
   const { c, ctx } = canvas2d(1024, 512);
@@ -339,36 +367,40 @@ function hullTexture(maxAnisotropy) {
   return t;
 }
 
+// Sparks are drawn as LineSegments, two vertices per spark: the head at the
+// current ballistic position and the tail sampled slightly earlier on the same
+// trajectory. That makes each one a streak aligned to its own velocity, which a
+// point sprite can never do — round sprites read as bokeh, not sparks.
 const SPARK_VERT = `
 attribute vec3 aVel;
-attribute float aSize;
 attribute float aSeed;
+attribute float aTrail;
+attribute float aTail;
 uniform float uBurst;
-uniform float uPixelRatio;
 varying float vFade;
+varying float vTail;
 void main() {
-  float t = uBurst;
-  vec3 p = position + aVel * t * 0.9;
-  p.y -= 3.4 * t * t;
-  p.x += sin(aSeed * 6.283 + t * 9.0) * 0.07 * t;
-  p.z += cos(aSeed * 6.283 + t * 7.5) * 0.07 * t;
-  vFade = clamp(1.0 - t, 0.0, 1.0) * (0.45 + 0.55 * aSeed);
-  vec4 mv = modelViewMatrix * vec4(p, 1.0);
-  gl_PointSize = aSize * uPixelRatio * (260.0 / max(-mv.z, 0.001));
-  gl_Position = projectionMatrix * mv;
+  float t = max(uBurst - aTail * aTrail, 0.0);
+  vec3 p = position + aVel * t * 0.95;
+  p.y -= 3.2 * t * t;
+  p.x += sin(aSeed * 6.283 + t * 9.0) * 0.05 * t;
+  p.z += cos(aSeed * 6.283 + t * 7.5) * 0.05 * t;
+  vFade = clamp(1.0 - uBurst, 0.0, 1.0) * (0.35 + 0.65 * aSeed);
+  vTail = aTail;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(p, 1.0);
 }`;
 
 const SPARK_FRAG = `
-uniform sampler2D uTex;
 uniform float uOpacity;
 uniform vec3 uHot;
 uniform vec3 uCool;
 varying float vFade;
+varying float vTail;
 void main() {
-  vec4 tex = texture2D(uTex, gl_PointCoord);
-  vec3 col = mix(uCool, uHot, clamp(vFade * 1.5, 0.0, 1.0));
-  // Pushed above 1.0 so the bloom threshold catches the hottest cores.
-  gl_FragColor = vec4(col * (1.0 + vFade * 1.6), tex.a * vFade * uOpacity);
+  vec3 col = mix(uHot, uCool, vTail);
+  float a = (1.0 - vTail * 0.72) * vFade * uOpacity;
+  // Pushed above 1.0 so the bloom threshold catches the white-hot heads.
+  gl_FragColor = vec4(col * (1.0 + vFade * 2.4), a);
 }`;
 
 const EMBER_VERT = `
@@ -466,7 +498,7 @@ export class CinematicScene {
     this.renderer.setPixelRatio(this._pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.12;
+    this.renderer.toneMappingExposure = 1.34;
     this.renderer.setClearColor(0x000000, 0);
     if (!LOW_POWER) {
       this.renderer.shadowMap.enabled = true;
@@ -542,7 +574,7 @@ export class CinematicScene {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     // Threshold kept high so only the hot cores bloom and geometry stays crisp.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.62, 0.72, 0.78);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.78, 0.7, 0.62);
     this.composer.addPass(this.bloom);
     // Required with a composer chain: applies tone mapping + sRGB at the end.
     this.composer.addPass(new OutputPass());
@@ -624,7 +656,7 @@ export class CinematicScene {
   }
 
   _initLights() {
-    const key = new THREE.DirectionalLight(0xfff4e2, 2.6);
+    const key = new THREE.DirectionalLight(0xfff4e2, 3.1);
     key.position.set(5, 7, 5);
     if (!LOW_POWER) {
       key.castShadow = true;
@@ -649,7 +681,7 @@ export class CinematicScene {
     this.forge.position.set(0, 0.3, 0);
     this.scene.add(this.forge);
 
-    this.scene.add(new THREE.AmbientLight(0x1e2638, 0.8));
+    this.scene.add(new THREE.AmbientLight(0x243047, 1.1));
   }
 
   _steelMaterial(color, metalness, roughness) {
@@ -669,121 +701,168 @@ export class CinematicScene {
   _initPhaseA() {
     const g = new THREE.Group();
 
-    const floor = new THREE.Mesh(
-      new THREE.CircleGeometry(16, 64),
-      new THREE.MeshStandardMaterial({
-        color: 0x0a0f18,
-        metalness: 0.55,
-        roughness: 0.72,
-        transparent: true,
-        envMapIntensity: 0.6,
-      })
-    );
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.y = -1.18;
-    floor.receiveShadow = !LOW_POWER;
-    g.add(floor);
+    // Classic anvil silhouette: splayed base, narrow waist, heavy body, conical
+    // horn. A plain cylinder reads as an oil drum, not an anvil.
+    const anvilMat = this._steelMaterial(0x9ba3ad, 1.0, 0.3);
+    const darkMat = this._steelMaterial(0x14191f, 0.6, 0.72);
 
-    const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.4, 2.5), this._steelMaterial(0x1a212d, 0.8, 0.55));
-    plinth.position.y = -0.98;
-    plinth.castShadow = plinth.receiveShadow = !LOW_POWER;
-    g.add(plinth);
+    const stump = new THREE.Mesh(new THREE.CylinderGeometry(0.78, 0.92, 0.5, 24), darkMat);
+    stump.position.y = -1.12;
+    g.add(stump);
 
-    const anvilMat = this._steelMaterial(0xb9c0c8, 1.0, 0.26);
-    const anvil = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 1.18, 0.5, 64), anvilMat);
-    anvil.position.y = -0.33;
-    const anvilTop = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.92, 0.12, 64), anvilMat);
-    anvilTop.position.y = -0.03;
-    [anvil, anvilTop].forEach((m) => {
+    const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.26, 0.98), anvilMat);
+    base.position.y = -0.76;
+    const baseTaper = new THREE.Mesh(new THREE.CylinderGeometry(0.44, 0.64, 0.3, 4), anvilMat);
+    baseTaper.rotation.y = Math.PI / 4;
+    baseTaper.position.y = -0.48;
+    baseTaper.scale.set(1.5, 1, 1.05);
+    const waist = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.36, 0.62), anvilMat);
+    waist.position.y = -0.22;
+    const bodyTaper = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.42, 0.26, 4), anvilMat);
+    bodyTaper.rotation.y = Math.PI / 4;
+    bodyTaper.position.y = 0.03;
+    bodyTaper.scale.set(1.55, 1, 1.08);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.3, 0.84), anvilMat);
+    body.position.y = 0.3;
+    const face = new THREE.Mesh(new THREE.BoxGeometry(1.99, 0.07, 0.86), this._steelMaterial(0xc9d2dc, 1.0, 0.16));
+    face.position.y = 0.48;
+    const horn = new THREE.Mesh(new THREE.ConeGeometry(0.33, 1.0, 28), anvilMat);
+    horn.rotation.z = -Math.PI / 2;
+    horn.position.set(1.42, 0.3, 0);
+    horn.scale.set(1, 1, 0.92);
+    const heel = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.26, 0.8), anvilMat);
+    heel.position.set(-1.1, 0.3, 0);
+
+    [base, baseTaper, waist, bodyTaper, body, face, horn, heel].forEach((m) => {
       m.castShadow = m.receiveShadow = !LOW_POWER;
       g.add(m);
     });
 
+    // Sledgehammer: heavy horizontal head, tapered haft raked back.
     const hammer = new THREE.Group();
-    const headMat = this._steelMaterial(0x4a515d, 0.95, 0.32);
-    const head = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.58, 0.78), headMat);
-    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.66, 32), headMat);
-    collar.position.y = 0.3;
+    const headMat = this._steelMaterial(0x5a626e, 0.98, 0.28);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.38, 0.38), headMat);
+    const faceL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.19, 0.1, 24), this._steelMaterial(0x8d96a2, 1.0, 0.2));
+    faceL.rotation.z = Math.PI / 2;
+    faceL.position.x = -0.49;
+    const faceR = faceL.clone();
+    faceR.position.x = 0.49;
     const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.085, 0.105, 1.55, 24),
+      new THREE.CylinderGeometry(0.058, 0.082, 2.05, 20),
       new THREE.MeshStandardMaterial({
-        color: 0x6b4426,
-        roughness: 0.82,
-        metalness: 0.05,
+        color: 0x7d5230,
+        roughness: 0.78,
+        metalness: 0.04,
         normalMap: this.steel.normalMap,
         transparent: true,
-        envMapIntensity: 0.5,
+        envMapIntensity: 0.45,
       })
     );
-    handle.position.y = 1.0;
-    hammer.add(head, collar, handle);
+    handle.position.set(0.52, 0.94, 0);
+    handle.rotation.z = -0.48;
+    hammer.add(head, faceL, faceR, handle);
     hammer.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
-    hammer.position.y = 1.9;
     g.add(hammer);
     this.hammer = hammer;
 
-    this.hearth = this._sprite(0xf59e0b, 3.8, 0.8);
-    this.hearth.position.set(0, 0.06, 0);
+    this.hearth = this._sprite(0xffb24a, 1.9, 0);
+    this.hearth.position.set(0, 0.56, 0);
     g.add(this.hearth);
 
-    const SPARKS = LOW_POWER ? 4000 : 18000;
+    this.smoke = [];
+    const smokeTex = smokeTexture();
+    for (let i = 0; i < (LOW_POWER ? 4 : 8); i++) {
+      const s = new THREE.Sprite(
+        new THREE.SpriteMaterial({
+          map: smokeTex,
+          color: 0x8fa3bd,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          fog: false,
+        })
+      );
+      const a = (i / (LOW_POWER ? 4 : 8)) * Math.PI * 2;
+      s.userData.dir = new THREE.Vector3(Math.cos(a) * 1.5, 0.45 + Math.random() * 0.5, Math.sin(a) * 1.5);
+      s.userData.seed = Math.random();
+      s.userData.skipFade = true;
+      g.add(s);
+      this.smoke.push(s);
+    }
+
+    const SPARKS = LOW_POWER ? 3000 : 11000;
     const sGeo = new THREE.BufferGeometry();
-    const sPos = new Float32Array(SPARKS * 3);
-    const sVel = new Float32Array(SPARKS * 3);
-    const sSize = new Float32Array(SPARKS);
-    const sSeed = new Float32Array(SPARKS);
+    const sPos = new Float32Array(SPARKS * 6);
+    const sVel = new Float32Array(SPARKS * 6);
+    const sSeed = new Float32Array(SPARKS * 2);
+    const sTrail = new Float32Array(SPARKS * 2);
+    const sTail = new Float32Array(SPARKS * 2);
     for (let i = 0; i < SPARKS; i++) {
-      sPos[i * 3] = (Math.random() - 0.5) * 0.34;
-      sPos[i * 3 + 1] = 0.06;
-      sPos[i * 3 + 2] = (Math.random() - 0.5) * 0.34;
+      const ox = (Math.random() - 0.5) * 0.3;
+      const oy = 0.52 + (Math.random() - 0.5) * 0.08;
+      const oz = (Math.random() - 0.5) * 0.3;
       const theta = Math.random() * Math.PI * 2;
-      const phi = Math.random() * Math.PI * 0.5;
-      const speed = 1.3 + Math.pow(Math.random(), 0.6) * 4.6;
-      sVel[i * 3] = Math.sin(phi) * Math.cos(theta) * speed * 1.35;
-      sVel[i * 3 + 1] = Math.cos(phi) * speed * 0.85 + 0.5;
-      sVel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed * 1.35;
-      sSize[i] = 0.5 + Math.random() * 2.2;
-      sSeed[i] = Math.random();
+      // Shallow cone: a forge strike throws sparks sideways, not straight up.
+      const phi = Math.acos(1 - Math.random() * 1.45);
+      // Heavy tail on the speed curve so a few sparks fly far and streak long.
+      const speed = 1.4 + Math.pow(Math.random(), 2.3) * 13.0;
+      const vx = Math.sin(phi) * Math.cos(theta) * speed;
+      const vy = Math.abs(Math.cos(phi)) * speed * 0.55 + 0.35;
+      const vz = Math.sin(phi) * Math.sin(theta) * speed;
+      const seed = Math.random();
+      const trail = 0.028 + Math.min(speed / 14, 1) * 0.085;
+      for (let v = 0; v < 2; v++) {
+        const k = i * 2 + v;
+        sPos[k * 3] = ox;
+        sPos[k * 3 + 1] = oy;
+        sPos[k * 3 + 2] = oz;
+        sVel[k * 3] = vx;
+        sVel[k * 3 + 1] = vy;
+        sVel[k * 3 + 2] = vz;
+        sSeed[k] = seed;
+        sTrail[k] = trail;
+        sTail[k] = v; // 0 = head, 1 = tail
+      }
     }
     sGeo.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
     sGeo.setAttribute("aVel", new THREE.BufferAttribute(sVel, 3));
-    sGeo.setAttribute("aSize", new THREE.BufferAttribute(sSize, 1));
     sGeo.setAttribute("aSeed", new THREE.BufferAttribute(sSeed, 1));
+    sGeo.setAttribute("aTrail", new THREE.BufferAttribute(sTrail, 1));
+    sGeo.setAttribute("aTail", new THREE.BufferAttribute(sTail, 1));
     this.sparkMat = new THREE.ShaderMaterial({
       vertexShader: SPARK_VERT,
       fragmentShader: SPARK_FRAG,
       uniforms: {
         uBurst: { value: 0 },
         uOpacity: { value: 0 },
-        uPixelRatio: { value: this._pixelRatio },
-        uTex: { value: this.glow },
-        uHot: { value: new THREE.Color(0xfff2d0) },
-        uCool: { value: new THREE.Color(0xd43b12) },
+        uHot: { value: new THREE.Color(0xfff6e2) },
+        uCool: { value: new THREE.Color(0xc43a0c) },
       },
       transparent: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
-    const sparks = new THREE.Points(sGeo, this.sparkMat);
+    const sparks = new THREE.LineSegments(sGeo, this.sparkMat);
     sparks.frustumCulled = false;
     sparks.userData.skipFade = true;
     g.add(sparks);
 
-    const EMBERS = LOW_POWER ? 300 : 900;
+    const EMBERS = LOW_POWER ? 120 : 320;
     const eGeo = new THREE.BufferGeometry();
     const ePos = new Float32Array(EMBERS * 3);
     const eSize = new Float32Array(EMBERS);
     const eSeed = new Float32Array(EMBERS);
     const eSpeed = new Float32Array(EMBERS);
     for (let i = 0; i < EMBERS; i++) {
-      const r = Math.random() * 1.7;
+      const r = Math.random() * 2.2;
       const a = Math.random() * Math.PI * 2;
       ePos[i * 3] = Math.cos(a) * r;
       ePos[i * 3 + 1] = 0;
       ePos[i * 3 + 2] = Math.sin(a) * r;
-      eSize[i] = 0.4 + Math.random() * 1.4;
+      // Small: these are drifting cinders. Oversized glow sprites read as bokeh.
+      eSize[i] = 0.1 + Math.random() * 0.26;
       eSeed[i] = Math.random();
       eSpeed[i] = 0.6 + Math.random() * 1.6;
     }
@@ -1116,27 +1195,47 @@ export class CinematicScene {
     });
   }
 
-  _updatePhaseA(t, time) {
+  _updatePhaseA(t, time, looping) {
     const fade = 1 - smoothstep(t, 0.86, 1);
     this._fade(this.groupA, fade);
 
-    const fall = smoothstep(t, 0.12, 0.26);
-    const bob = REDUCED_MOTION ? 0 : Math.sin(time * 1.2) * 0.12 * (1 - fall);
-    this.hammer.position.y = lerp(1.9 + bob, 0.52, fall);
-    this.hammer.rotation.z = lerp(-0.22, 0, fall);
+    // Before the user scrolls, the strike runs on a loop so the first thing on
+    // screen is the impact rather than a hammer hanging in mid-air.
+    let fall, burst, cycle;
+    if (looping) {
+      cycle = (time % 3.1) / 3.1;
+      fall = smoothstep(cycle, 0.3, 0.42) * (1 - smoothstep(cycle, 0.62, 0.88));
+      burst = cycle < 0.42 ? 0 : clamp((cycle - 0.42) / 0.46, 0, 1);
+    } else {
+      fall = smoothstep(t, 0.12, 0.26);
+      burst = clamp((t - 0.26) / 0.5, 0, 1);
+    }
 
-    const burst = clamp((t - 0.26) / 0.5, 0, 1);
-    const heat = 0.5 + fall * 0.55;
-    const pulse = REDUCED_MOTION ? 1 : 1 + Math.sin(time * 2.2) * 0.07;
-    this.hearth.scale.setScalar(3.8 * pulse * heat);
-    this.hearth.material.opacity = 0.72 * fade * heat;
-    this.forge.intensity = (2.5 + (1 - burst) * 9 * (burst > 0 ? 1 : 0.18)) * fade * heat;
+    const lift = REDUCED_MOTION ? 0 : Math.sin(time * 1.3) * 0.07 * (1 - fall);
+    this.hammer.position.y = lerp(2.25 + lift, 0.72, fall);
+    this.hammer.position.x = lerp(-0.34, 0, fall);
+    this.hammer.rotation.z = lerp(0.46, 0.06, fall);
+
+    const impact = burst > 0 ? Math.pow(1 - burst, 2.2) : 0;
+    const heat = 0.25 + impact * 0.95;
+    this.hearth.scale.setScalar(1.6 + impact * 3.4);
+    this.hearth.material.opacity = (0.25 + impact * 0.75) * fade;
+    this.forge.intensity = (1.6 + impact * 26) * fade;
 
     this.sparkMat.uniforms.uBurst.value = burst;
     this.sparkMat.uniforms.uOpacity.value = burst > 0 ? fade : 0;
-    this.emberMat.uniforms.uOpacity.value = 0.85 * fade;
+    this.emberMat.uniforms.uOpacity.value = (0.3 + impact * 0.5) * fade;
 
-    this._shake = t > 0.24 && t < 0.4 ? (1 - burst) * 0.14 : 0;
+    this.smoke.forEach((s, i) => {
+      const grow = burst;
+      const d = s.userData.dir;
+      s.position.set(d.x * grow * 1.15, 0.5 + d.y * grow * 1.5, d.z * grow * 1.15);
+      s.scale.setScalar(1.1 + grow * 4.2 + s.userData.seed);
+      s.material.opacity = burst > 0 ? Math.sin(Math.min(burst, 1) * Math.PI) * 0.26 * fade : 0;
+      s.material.rotation = s.userData.seed * 6.28 + grow * (i % 2 ? 0.5 : -0.5);
+    });
+
+    this._shake = burst > 0 && burst < 0.35 ? (1 - burst / 0.35) * 0.2 : 0;
   }
 
   _updatePhaseB(t, time, dt) {
@@ -1190,8 +1289,8 @@ export class CinematicScene {
 
   _updateCamera(p, time) {
     if (p < 1) {
-      this._camBase.set(2.6, 3.1, lerp(7.3, 6.5, p));
-      this._camTarget.set(0, 2.05, 0);
+      this._camBase.set(2.5, 2.7, lerp(7.9, 7.1, p));
+      this._camTarget.set(0, 1.45, 0);
     } else if (p < 2) {
       const t = p - 1;
       this._camBase.set(lerp(-0.6, 1.8, t), lerp(1.8, 1.3, t), lerp(5.4, 7.6, t));
@@ -1233,16 +1332,16 @@ export class CinematicScene {
 
     // Crossfade the gradient sky out to open starfield as the globe comes in.
     const space = clamp((p - 1.72) / 0.5, 0, 1);
-    this.starfield.material.opacity = space;
-    this.backdrop.material.opacity = 1 - space * 0.9;
-    this.dust.material.opacity = 0.5 * (1 - space * 0.75);
+    this.starfield.material.opacity = 0.75 + space * 0.25;
+    this.backdrop.material.opacity = 0.82 - space * 0.72;
+    this.dust.material.opacity = 0.32 * (1 - space * 0.6);
 
     const phase = p < 1 ? 0 : p < 2 ? 1 : 2;
     this.groupA.visible = phase === 0;
     this.groupB.visible = phase === 1;
     this.groupC.visible = phase === 2;
 
-    if (phase === 0) this._updatePhaseA(p, time);
+    if (phase === 0) this._updatePhaseA(p, time, p < 0.02);
     else if (phase === 1) this._updatePhaseB(p - 1, time, dt);
     else this._updatePhaseC(Math.min(p - 2, 1), time);
 
