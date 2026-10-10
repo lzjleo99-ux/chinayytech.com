@@ -1618,8 +1618,7 @@ export class CinematicScene {
     const fall = smoothstep(t, 0.12, 0.26);
     const burst = clamp((t - 0.26) / 0.5, 0, 1);
 
-    const lift = REDUCED_MOTION ? 0 : Math.sin(time * 1.3) * 0.07 * (1 - fall);
-    this.hammer.position.y = lerp(2.25 + lift, 0.72, fall);
+    this.hammer.position.y = lerp(2.25, 0.72, fall);
     this.hammer.position.x = lerp(-0.34, 0, fall);
     this.hammer.rotation.z = lerp(0.46, 0.06, fall);
 
@@ -1797,7 +1796,7 @@ export class CinematicScene {
     const desired = this._camTarget.clone().add(offset);
     if (!REDUCED_MOTION) {
       desired.x += this._mouse.x * 0.55;
-      desired.y += -this._mouse.y * 0.35 + Math.sin(time * 0.4) * 0.06;
+      desired.y += -this._mouse.y * 0.35;
     }
 
     if (!this._camReady) {

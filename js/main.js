@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 
   if (document.getElementById("inquiry-form")) {
-    import("./form.js")
+    import("./form.js?v=__BUILD__")
       .then(({ initContactForm }) => initContactForm())
       .catch((err) => console.error("Contact form script failed to load.", err));
   }
@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!canvas) return;
 
   // Dynamic import so pages without the hero never download the Three.js bundle.
-  import("./scene.js")
+  import("./scene.js?v=__BUILD__")
     .then(({ CinematicScene }) => {
       const scene = new CinematicScene(canvas);
       const captions = Array.from(document.querySelectorAll(".storyboard__caption"));

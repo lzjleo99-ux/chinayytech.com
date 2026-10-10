@@ -27,6 +27,16 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
+      # Pages serves assets with max-age=600 at URLs that never change, so a
+      # browser keeps replaying a stale bundle after a deploy. Stamping the
+      # commit SHA into the asset URLs forces a fresh fetch every release.
+      - name: Stamp build id into asset URLs
+        run: |
+          BUILD="${GITHUB_SHA::12}"
+          sed -i "s/__BUILD__/${BUILD}/g" index.html contact.html js/main.js
+          echo "Stamped build ${BUILD}"
+          grep -o "v=${BUILD}" index.html js/main.js | sort | uniq -c
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
