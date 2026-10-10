@@ -29,93 +29,323 @@ function latLonToVec3(lat, lon, radius) {
   );
 }
 
-// Soft radial falloff, tinted per-material. Stands in for a bloom pass.
-function glowTexture() {
-  const size = 128;
+function canvas2d(w, h) {
   const c = document.createElement("canvas");
-  c.width = c.height = size;
-  const ctx = c.getContext("2d");
-  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  c.width = w;
+  c.height = h;
+  return { c, ctx: c.getContext("2d") };
+}
+
+function glowTexture() {
+  const { c, ctx } = canvas2d(128, 128);
+  const g = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
   g.addColorStop(0, "rgba(255,255,255,1)");
-  g.addColorStop(0.2, "rgba(255,255,255,0.65)");
-  g.addColorStop(0.55, "rgba(255,255,255,0.18)");
+  g.addColorStop(0.18, "rgba(255,255,255,0.7)");
+  g.addColorStop(0.5, "rgba(255,255,255,0.2)");
   g.addColorStop(1, "rgba(255,255,255,0)");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, size, size);
+  ctx.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 
-function backdropTexture() {
-  const w = 8, h = 256;
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#02040a");
-  g.addColorStop(0.42, "#061024");
-  g.addColorStop(0.68, "#0d2c4d");
-  g.addColorStop(0.86, "#071526");
-  g.addColorStop(1, "#02040a");
+// Equirectangular studio lighting. Feeds PMREM so metal has something real to reflect.
+function envCanvas() {
+  const { c, ctx } = canvas2d(1024, 512);
+  const sky = ctx.createLinearGradient(0, 0, 0, 512);
+  sky.addColorStop(0, "#0a1830");
+  sky.addColorStop(0.45, "#13304f");
+  sky.addColorStop(0.58, "#1b4668");
+  sky.addColorStop(0.72, "#10233a");
+  sky.addColorStop(1, "#05080f");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, 1024, 512);
+
+  const blob = (x, y, r, color, alpha) => {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, color);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    ctx.globalAlpha = 1;
+  };
+  blob(260, 120, 190, "rgba(255,248,232,1)", 0.95);
+  blob(760, 150, 150, "rgba(214,236,255,1)", 0.7);
+  blob(120, 300, 130, "rgba(6,182,212,1)", 0.45);
+  blob(560, 400, 220, "rgba(245,158,11,1)", 0.5);
+  return c;
+}
+
+function skyCanvas() {
+  const { c, ctx } = canvas2d(16, 512);
+  const g = ctx.createLinearGradient(0, 0, 0, 512);
+  g.addColorStop(0, "#01030a");
+  g.addColorStop(0.4, "#050f22");
+  g.addColorStop(0.62, "#0c2a49");
+  g.addColorStop(0.8, "#061423");
+  g.addColorStop(1, "#01030a");
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, w, h);
+  ctx.fillRect(0, 0, 16, 512);
+  return c;
+}
+
+// Height field -> Sobel normal map, so steel reads as forged rather than plastic.
+function steelMaps(maxAnisotropy) {
+  const size = 512;
+  const { c: hc, ctx: hctx } = canvas2d(size, size);
+  hctx.fillStyle = "#808080";
+  hctx.fillRect(0, 0, size, size);
+  for (let i = 0; i < 2600; i++) {
+    const r = 1 + Math.random() * 6;
+    const v = 110 + Math.random() * 90;
+    hctx.fillStyle = `rgba(${v},${v},${v},0.5)`;
+    hctx.beginPath();
+    hctx.arc(Math.random() * size, Math.random() * size, r, 0, Math.PI * 2);
+    hctx.fill();
+  }
+  hctx.lineWidth = 1;
+  for (let i = 0; i < 160; i++) {
+    hctx.strokeStyle = `rgba(${150 + Math.random() * 80},${150 + Math.random() * 80},${150 + Math.random() * 80},0.35)`;
+    const y = Math.random() * size;
+    hctx.beginPath();
+    hctx.moveTo(0, y);
+    hctx.lineTo(size, y + (Math.random() - 0.5) * 12);
+    hctx.stroke();
+  }
+
+  const h = hctx.getImageData(0, 0, size, size).data;
+  const { c: nc, ctx: nctx } = canvas2d(size, size);
+  const out = nctx.createImageData(size, size);
+  const at = (x, y) => h[((y & (size - 1)) * size + (x & (size - 1))) * 4];
+  const strength = 2.2;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = (at(x + 1, y) - at(x - 1, y)) / 255;
+      const dy = (at(x, y + 1) - at(x, y - 1)) / 255;
+      let nx = -dx * strength;
+      let ny = -dy * strength;
+      const len = Math.hypot(nx, ny, 1);
+      nx /= len;
+      ny /= len;
+      const nz = 1 / len;
+      const i = (y * size + x) * 4;
+      out.data[i] = (nx * 0.5 + 0.5) * 255;
+      out.data[i + 1] = (ny * 0.5 + 0.5) * 255;
+      out.data[i + 2] = (nz * 0.5 + 0.5) * 255;
+      out.data[i + 3] = 255;
+    }
+  }
+  nctx.putImageData(out, 0, 0);
+
+  const normalMap = new THREE.CanvasTexture(nc);
+  const roughnessMap = new THREE.CanvasTexture(hc);
+  [normalMap, roughnessMap].forEach((t) => {
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.repeat.set(2, 2);
+    t.anisotropy = maxAnisotropy;
+  });
+  return { normalMap, roughnessMap };
+}
+
+function waterNormalMap(maxAnisotropy) {
+  const size = 256;
+  const { c, ctx } = canvas2d(size, size);
+  const img = ctx.createImageData(size, size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const w =
+        Math.sin((x / size) * Math.PI * 6) * 0.5 +
+        Math.sin((y / size) * Math.PI * 8 + 1.3) * 0.3 +
+        Math.sin(((x + y) / size) * Math.PI * 10) * 0.2;
+      const nx = Math.cos(w) * 0.35;
+      const ny = Math.sin(w) * 0.35;
+      const len = Math.hypot(nx, ny, 1);
+      const i = (y * size + x) * 4;
+      img.data[i] = ((nx / len) * 0.5 + 0.5) * 255;
+      img.data[i + 1] = ((ny / len) * 0.5 + 0.5) * 255;
+      img.data[i + 2] = (1 / len) * 0.5 * 255 + 127;
+      img.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
   const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(14, 14);
+  t.anisotropy = maxAnisotropy;
   return t;
 }
 
-function earthTexture() {
-  const w = 1024, h = 512;
-  const c = document.createElement("canvas");
-  c.width = w; c.height = h;
-  const ctx = c.getContext("2d");
-  ctx.fillStyle = "#071a33";
+function earthMaps(maxAnisotropy) {
+  const w = 2048, h = 1024;
+  const { c, ctx } = canvas2d(w, h);
+  const { c: rc, ctx: rctx } = canvas2d(w, h);
+
+  const ocean = ctx.createLinearGradient(0, 0, 0, h);
+  ocean.addColorStop(0, "#05162c");
+  ocean.addColorStop(0.5, "#0a2b50");
+  ocean.addColorStop(1, "#05162c");
+  ctx.fillStyle = ocean;
   ctx.fillRect(0, 0, w, h);
+  rctx.fillStyle = "#2a2a2a"; // low roughness over water
+  rctx.fillRect(0, 0, w, h);
 
   const project = (lat, lon) => [((lon + 180) / 360) * w, ((90 - lat) / 180) * h];
 
-  ctx.strokeStyle = "rgba(6,182,212,0.10)";
-  ctx.lineWidth = 1;
-  for (let lon = -180; lon <= 180; lon += 30) {
+  ctx.strokeStyle = "rgba(6,182,212,0.08)";
+  ctx.lineWidth = 1.5;
+  for (let lon = -180; lon <= 180; lon += 20) {
     const [x] = project(0, lon);
     ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
   }
-  for (let lat = -60; lat <= 60; lat += 30) {
+  for (let lat = -80; lat <= 80; lat += 20) {
     const [, y] = project(lat, 0);
     ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
   }
 
-  // Rough continent silhouettes — stylized, not survey-accurate.
-  const blob = (points) => {
-    ctx.beginPath();
-    points.forEach(([lat, lon], i) => {
-      const [x, y] = project(lat, lon);
-      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  const land = [
+    [[66,30],[62,60],[70,90],[73,130],[66,170],[60,160],[54,140],[50,130],[43,132],[35,126],[30,122],[22,110],[10,105],[8,98],[18,95],[22,90],[20,72],[25,65],[32,48],[38,45],[42,50],[48,40],[55,33],[60,28]],
+    [[71,25],[60,10],[58,-5],[50,-5],[43,-9],[36,-6],[37,15],[41,19],[45,30],[48,38],[60,30],[68,20]],
+    [[37,-6],[33,10],[32,25],[30,33],[16,40],[11,51],[-1,42],[-18,36],[-34,20],[-28,15],[-12,13],[4,9],[6,-3],[12,-16],[25,-14],[32,-9]],
+    [[70,-165],[72,-125],[70,-85],[62,-65],[48,-55],[42,-70],[35,-76],[30,-82],[25,-97],[20,-105],[30,-115],[38,-123],[48,-125],[58,-140],[65,-160]],
+    [[12,-72],[8,-60],[0,-50],[-8,-35],[-23,-41],[-34,-54],[-46,-67],[-54,-70],[-42,-73],[-30,-71],[-18,-70],[-5,-78],[6,-77]],
+    [[-11,114],[-13,131],[-11,143],[-20,149],[-32,152],[-38,145],[-35,136],[-32,126],[-22,114]],
+  ];
+  const drawLand = (context, fill, stroke) => {
+    context.fillStyle = fill;
+    context.strokeStyle = stroke;
+    context.lineWidth = 2;
+    land.forEach((poly) => {
+      context.beginPath();
+      poly.forEach(([lat, lon], i) => {
+        const [x, y] = project(lat, lon);
+        if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
+      });
+      context.closePath();
+      context.fill();
+      context.stroke();
     });
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
   };
-  ctx.fillStyle = "#15493f";
-  ctx.strokeStyle = "rgba(52,211,153,0.35)";
-  ctx.lineWidth = 1.5;
-  blob([[55, 60], [60, 140], [40, 150], [20, 110], [10, 95], [25, 65]]);
-  blob([[60, -10], [60, 40], [45, 40], [36, 10], [40, -10]]);
-  blob([[37, -10], [32, 35], [-5, 42], [-35, 20], [-20, 10], [10, -15]]);
-  blob([[70, -160], [70, -60], [25, -80], [15, -100], [30, -120]]);
-  blob([[10, -80], [-5, -35], [-55, -68], [-20, -75]]);
-  blob([[-10, 113], [-12, 153], [-38, 145], [-35, 115]]);
+  drawLand(ctx, "#164a3c", "rgba(52,211,153,0.4)");
+  drawLand(rctx, "#d8d8d8", "#d8d8d8"); // high roughness over land
 
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = maxAnisotropy;
+  const roughnessMap = new THREE.CanvasTexture(rc);
+  roughnessMap.anisotropy = maxAnisotropy;
+  return { map, roughnessMap };
 }
+
+const SPARK_VERT = `
+attribute vec3 aVel;
+attribute float aSize;
+attribute float aSeed;
+uniform float uBurst;
+uniform float uPixelRatio;
+varying float vFade;
+void main() {
+  float t = uBurst;
+  vec3 p = position + aVel * t * 0.9;
+  p.y -= 2.4 * t * t;
+  p.x += sin(aSeed * 6.283 + t * 9.0) * 0.07 * t;
+  p.z += cos(aSeed * 6.283 + t * 7.5) * 0.07 * t;
+  vFade = clamp(1.0 - t, 0.0, 1.0) * (0.45 + 0.55 * aSeed);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  gl_PointSize = aSize * uPixelRatio * (260.0 / max(-mv.z, 0.001));
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const SPARK_FRAG = `
+uniform sampler2D uTex;
+uniform float uOpacity;
+uniform vec3 uHot;
+uniform vec3 uCool;
+varying float vFade;
+void main() {
+  vec4 tex = texture2D(uTex, gl_PointCoord);
+  vec3 col = mix(uCool, uHot, clamp(vFade * 1.5, 0.0, 1.0));
+  gl_FragColor = vec4(col, tex.a * vFade * uOpacity);
+}`;
+
+const EMBER_VERT = `
+attribute float aSize;
+attribute float aSeed;
+attribute float aSpeed;
+uniform float uTime;
+uniform float uPixelRatio;
+varying float vFade;
+void main() {
+  float t = fract(uTime * aSpeed * 0.12 + aSeed);
+  vec3 p = position;
+  p.y = mix(-0.45, 3.4, t);
+  p.x += sin(uTime * 0.7 + aSeed * 6.283) * 0.18 * t;
+  p.z += cos(uTime * 0.6 + aSeed * 6.283) * 0.18 * t;
+  vFade = sin(t * 3.14159) * (0.4 + 0.6 * aSeed);
+  vec4 mv = modelViewMatrix * vec4(p, 1.0);
+  gl_PointSize = aSize * uPixelRatio * (240.0 / max(-mv.z, 0.001));
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const EMBER_FRAG = `
+uniform sampler2D uTex;
+uniform float uOpacity;
+uniform vec3 uColor;
+varying float vFade;
+void main() {
+  vec4 tex = texture2D(uTex, gl_PointCoord);
+  gl_FragColor = vec4(uColor, tex.a * vFade * uOpacity);
+}`;
+
+const ARC_VERT = `
+varying vec2 vUv;
+void main() {
+  vUv = uv;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const ARC_FRAG = `
+uniform float uReveal;
+uniform float uTime;
+uniform float uOpacity;
+uniform vec3 uColor;
+varying vec2 vUv;
+void main() {
+  if (vUv.x > uReveal) discard;
+  float head = smoothstep(uReveal - 0.04, uReveal, vUv.x);
+  float travel = fract(uTime * 0.22);
+  float pulse = exp(-pow((travel - vUv.x) * 13.0, 2.0));
+  vec3 col = mix(uColor, vec3(1.0), clamp(pulse + head, 0.0, 1.0));
+  float a = (0.45 + 0.75 * pulse + 0.5 * head) * uOpacity;
+  gl_FragColor = vec4(col, a);
+}`;
+
+const ATMO_VERT = `
+varying vec3 vNormalW;
+varying vec3 vPosW;
+void main() {
+  vNormalW = normalize(mat3(modelMatrix) * normal);
+  vec4 wp = modelMatrix * vec4(position, 1.0);
+  vPosW = wp.xyz;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}`;
+
+const ATMO_FRAG = `
+uniform vec3 uColor;
+uniform float uIntensity;
+varying vec3 vNormalW;
+varying vec3 vPosW;
+void main() {
+  vec3 viewDir = normalize(cameraPosition - vPosW);
+  float f = pow(1.0 - abs(dot(normalize(vNormalW), viewDir)), 3.0);
+  gl_FragColor = vec4(uColor, clamp(f, 0.0, 1.0) * uIntensity);
+}`;
 
 export class CinematicScene {
   constructor(canvas) {
     this.canvas = canvas;
-    this.progress = 0; // 0 -> 3 across the storyboard
+    this.progress = 0;
     this.clock = new THREE.Clock();
     this._shake = 0;
     this._zBoost = 1;
@@ -123,23 +353,32 @@ export class CinematicScene {
     this._mouseTarget = new THREE.Vector2();
     this._camTarget = new THREE.Vector3();
     this._camBase = new THREE.Vector3();
+    this._shaders = [];
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
-      antialias: !LOW_POWER,
+      antialias: true,
       alpha: true,
       powerPreference: "high-performance",
     });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, LOW_POWER ? 1.5 : 2));
+    this._pixelRatio = Math.min(window.devicePixelRatio || 1, LOW_POWER ? 1.5 : 2);
+    this.renderer.setPixelRatio(this._pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // Transparent clear so the CSS gradient under the canvas shows if a frame is ever empty.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.15;
     this.renderer.setClearColor(0x000000, 0);
+    if (!LOW_POWER) {
+      this.renderer.shadowMap.enabled = true;
+      this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    }
 
+    this._maxAniso = this.renderer.capabilities.getMaxAnisotropy();
     this.scene = new THREE.Scene();
-    this.scene.fog = new THREE.FogExp2(0x03060f, 0.008);
-    this.camera = new THREE.PerspectiveCamera(45, 1, 0.1, 400);
+    this.scene.fog = new THREE.FogExp2(0x03060f, 0.0075);
+    this.camera = new THREE.PerspectiveCamera(42, 1, 0.1, 400);
 
     this.glow = glowTexture();
+    this.steel = steelMaps(this._maxAniso);
 
     this._initEnvironment();
     this._initLights();
@@ -176,25 +415,37 @@ export class CinematicScene {
       })
     );
     s.scale.setScalar(scale);
+    s.userData.skipFade = true;
     return s;
   }
 
   _initEnvironment() {
+    // Image-based lighting: without this, metal has nothing to reflect and reads as plastic.
+    try {
+      const pmrem = new THREE.PMREMGenerator(this.renderer);
+      const src = new THREE.CanvasTexture(envCanvas());
+      src.mapping = THREE.EquirectangularReflectionMapping;
+      src.colorSpace = THREE.SRGBColorSpace;
+      this.scene.environment = pmrem.fromEquirectangular(src).texture;
+      src.dispose();
+      pmrem.dispose();
+    } catch (err) {
+      console.warn("Environment map unavailable; falling back to direct lighting only.", err);
+    }
+
+    const skyTex = new THREE.CanvasTexture(skyCanvas());
+    skyTex.colorSpace = THREE.SRGBColorSpace;
     const backdrop = new THREE.Mesh(
-      new THREE.SphereGeometry(120, 32, 16),
-      new THREE.MeshBasicMaterial({
-        map: backdropTexture(),
-        side: THREE.BackSide,
-        depthWrite: false,
-        fog: false,
-      })
+      new THREE.SphereGeometry(140, 32, 16),
+      new THREE.MeshBasicMaterial({ map: skyTex, side: THREE.BackSide, depthWrite: false, fog: false })
     );
+    backdrop.userData.skipFade = true;
     this.scene.add(backdrop);
 
-    const COUNT = LOW_POWER ? 450 : 1100;
+    const COUNT = LOW_POWER ? 500 : 1300;
     const pos = new Float32Array(COUNT * 3);
     for (let i = 0; i < COUNT; i++) {
-      const r = 14 + Math.random() * 34;
+      const r = 14 + Math.random() * 36;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.acos(2 * Math.random() - 1);
       pos[i * 3] = r * Math.sin(phi) * Math.cos(theta);
@@ -208,201 +459,289 @@ export class CinematicScene {
       new THREE.PointsMaterial({
         map: this.glow,
         color: 0x9fd8ff,
-        size: 0.5,
+        size: 0.45,
         transparent: true,
-        opacity: 0.55,
+        opacity: 0.5,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
         fog: false,
       })
     );
+    this.dust.userData.skipFade = true;
     this.scene.add(this.dust);
 
-    // Always-on ambient wash so the canvas never reads as flat black.
-    const ambientGlow = this._sprite(0x1e5fa8, 26, 0.5);
-    ambientGlow.position.set(-1.5, 0.5, -9);
-    this.scene.add(ambientGlow);
+    const wash = this._sprite(0x1e5fa8, 28, 0.45);
+    wash.position.set(-1.5, 0.5, -10);
+    this.scene.add(wash);
   }
 
   _initLights() {
-    const key = new THREE.DirectionalLight(0xfff2d9, 2.4);
-    key.position.set(4, 6, 5);
+    const key = new THREE.DirectionalLight(0xfff4e2, 2.6);
+    key.position.set(5, 7, 5);
+    if (!LOW_POWER) {
+      key.castShadow = true;
+      key.shadow.mapSize.set(1024, 1024);
+      key.shadow.camera.near = 1;
+      key.shadow.camera.far = 32;
+      key.shadow.camera.left = -9;
+      key.shadow.camera.right = 9;
+      key.shadow.camera.top = 9;
+      key.shadow.camera.bottom = -9;
+      key.shadow.bias = -0.0006;
+      key.shadow.normalBias = 0.02;
+    }
     this.scene.add(key);
-    const rim = new THREE.DirectionalLight(0x3b82f6, 1.1);
+
+    const rim = new THREE.DirectionalLight(0x3b82f6, 1.2);
     rim.position.set(-6, 2, -4);
     this.scene.add(rim);
-    this.scene.add(new THREE.AmbientLight(0x2a3346, 1.4));
+
+    this.forge = new THREE.PointLight(0xff8a2b, 0, 9, 2);
+    this.forge.position.set(0, 0.3, 0);
+    this.scene.add(this.forge);
+
+    this.scene.add(new THREE.AmbientLight(0x1e2638, 0.8));
   }
 
-  // ---- Phase A: hammer, anvil, hearth glow, embers, spark burst ----
+  // Shares one normal/roughness pair across every steel surface; cloning per material
+  // would re-upload the same 512px maps dozens of times.
+  _steelMaterial(color, metalness, roughness) {
+    const mat = new THREE.MeshStandardMaterial({
+      color,
+      metalness,
+      roughness,
+      normalMap: this.steel.normalMap,
+      roughnessMap: this.steel.roughnessMap,
+      transparent: true,
+      envMapIntensity: 1.25,
+    });
+    mat.normalScale.set(0.7, 0.7);
+    return mat;
+  }
+
   _initPhaseA() {
     const g = new THREE.Group();
 
-    const base = new THREE.Mesh(
-      new THREE.BoxGeometry(2.4, 0.35, 2.4),
-      new THREE.MeshStandardMaterial({ color: 0x1b222e, metalness: 0.5, roughness: 0.7, transparent: true })
+    const floor = new THREE.Mesh(
+      new THREE.CircleGeometry(16, 64),
+      new THREE.MeshStandardMaterial({
+        color: 0x0a0f18,
+        metalness: 0.55,
+        roughness: 0.72,
+        transparent: true,
+        envMapIntensity: 0.6,
+      })
     );
-    base.position.y = -1.0;
-    g.add(base);
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.y = -1.18;
+    floor.receiveShadow = !LOW_POWER;
+    g.add(floor);
 
-    const anvil = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.9, 1.15, 0.55, 28),
-      new THREE.MeshStandardMaterial({ color: 0x9aa0a8, metalness: 0.9, roughness: 0.3, transparent: true })
-    );
-    anvil.position.y = -0.275;
-    g.add(anvil);
+    const baseMat = this._steelMaterial(0x1a212d, 0.8, 0.55);
+    const plinth = new THREE.Mesh(new THREE.BoxGeometry(2.5, 0.4, 2.5), baseMat);
+    plinth.position.y = -0.98;
+    plinth.castShadow = plinth.receiveShadow = !LOW_POWER;
+    g.add(plinth);
+
+    const anvilMat = this._steelMaterial(0xb9c0c8, 1.0, 0.28);
+    const anvil = new THREE.Mesh(new THREE.CylinderGeometry(0.92, 1.18, 0.5, 48), anvilMat);
+    anvil.position.y = -0.33;
+    const anvilTop = new THREE.Mesh(new THREE.CylinderGeometry(0.95, 0.92, 0.12, 48), anvilMat);
+    anvilTop.position.y = -0.03;
+    [anvil, anvilTop].forEach((m) => {
+      m.castShadow = m.receiveShadow = !LOW_POWER;
+      g.add(m);
+    });
 
     const hammer = new THREE.Group();
-    hammer.add(
-      new THREE.Mesh(
-        new THREE.BoxGeometry(1.0, 0.55, 0.75),
-        new THREE.MeshStandardMaterial({ color: 0x424954, metalness: 0.85, roughness: 0.35, transparent: true })
-      )
-    );
+    const headMat = this._steelMaterial(0x4a515d, 0.95, 0.34);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.58, 0.78), headMat);
+    const collar = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.66, 24), headMat);
+    collar.position.y = 0.3;
     const handle = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.09, 0.09, 1.5, 12),
-      new THREE.MeshStandardMaterial({ color: 0x6b4426, roughness: 0.85, transparent: true })
+      new THREE.CylinderGeometry(0.085, 0.105, 1.55, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0x6b4426,
+        roughness: 0.82,
+        metalness: 0.05,
+        transparent: true,
+        envMapIntensity: 0.5,
+      })
     );
-    handle.position.y = 0.95;
-    hammer.add(handle);
+    handle.position.y = 1.0;
+    hammer.add(head, collar, handle);
+    hammer.traverse((m) => {
+      if (m.isMesh) m.castShadow = !LOW_POWER;
+    });
     hammer.position.y = 1.9;
     g.add(hammer);
     this.hammer = hammer;
 
-    this.hearth = this._sprite(0xf59e0b, 3.6, 0.85);
-    this.hearth.position.set(0, 0.05, 0);
+    this.hearth = this._sprite(0xf59e0b, 3.8, 0.8);
+    this.hearth.position.set(0, 0.06, 0);
     g.add(this.hearth);
 
-    const EMBERS = LOW_POWER ? 90 : 220;
-    const ePos = new Float32Array(EMBERS * 3);
-    this._emberSpeed = new Float32Array(EMBERS);
-    for (let i = 0; i < EMBERS; i++) {
-      const r = Math.random() * 1.5;
-      const a = Math.random() * Math.PI * 2;
-      ePos[i * 3] = Math.cos(a) * r;
-      ePos[i * 3 + 1] = -0.4 + Math.random() * 3.4;
-      ePos[i * 3 + 2] = Math.sin(a) * r;
-      this._emberSpeed[i] = 0.18 + Math.random() * 0.42;
-    }
-    const eGeo = new THREE.BufferGeometry();
-    eGeo.setAttribute("position", new THREE.BufferAttribute(ePos, 3));
-    this.embers = new THREE.Points(
-      eGeo,
-      new THREE.PointsMaterial({
-        map: this.glow,
-        color: 0xffb347,
-        size: 0.17,
-        transparent: true,
-        opacity: 0.8,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: false,
-      })
-    );
-    g.add(this.embers);
-
-    const SPARKS = LOW_POWER ? 900 : 2200;
+    const SPARKS = LOW_POWER ? 4000 : 16000;
+    const sGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(SPARKS * 3);
-    this._sparkBase = new Float32Array(SPARKS * 3);
-    this._sparkVel = new Float32Array(SPARKS * 3);
+    const sVel = new Float32Array(SPARKS * 3);
+    const sSize = new Float32Array(SPARKS);
+    const sSeed = new Float32Array(SPARKS);
     for (let i = 0; i < SPARKS; i++) {
-      const ox = (Math.random() - 0.5) * 0.3;
-      const oz = (Math.random() - 0.5) * 0.3;
-      this._sparkBase[i * 3] = ox;
-      this._sparkBase[i * 3 + 1] = 0.05;
-      this._sparkBase[i * 3 + 2] = oz;
-      sPos[i * 3] = ox;
-      sPos[i * 3 + 1] = 0.05;
-      sPos[i * 3 + 2] = oz;
+      sPos[i * 3] = (Math.random() - 0.5) * 0.34;
+      sPos[i * 3 + 1] = 0.06;
+      sPos[i * 3 + 2] = (Math.random() - 0.5) * 0.34;
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI * 0.5;
-      const speed = 1.6 + Math.random() * 3.8;
-      this._sparkVel[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
-      this._sparkVel[i * 3 + 1] = Math.cos(phi) * speed * 1.35 + 1.1;
-      this._sparkVel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed;
+      const speed = 1.3 + Math.pow(Math.random(), 0.6) * 4.6;
+      sVel[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
+      sVel[i * 3 + 1] = Math.cos(phi) * speed * 1.35 + 1.0;
+      sVel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed;
+      sSize[i] = 0.5 + Math.random() * 2.2;
+      sSeed[i] = Math.random();
     }
-    const sGeo = new THREE.BufferGeometry();
     sGeo.setAttribute("position", new THREE.BufferAttribute(sPos, 3));
-    this.sparks = new THREE.Points(
-      sGeo,
-      new THREE.PointsMaterial({
-        map: this.glow,
-        color: 0xffc04d,
-        size: 0.14,
-        transparent: true,
-        opacity: 0,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        fog: false,
-      })
-    );
-    g.add(this.sparks);
+    sGeo.setAttribute("aVel", new THREE.BufferAttribute(sVel, 3));
+    sGeo.setAttribute("aSize", new THREE.BufferAttribute(sSize, 1));
+    sGeo.setAttribute("aSeed", new THREE.BufferAttribute(sSeed, 1));
+    this.sparkMat = new THREE.ShaderMaterial({
+      vertexShader: SPARK_VERT,
+      fragmentShader: SPARK_FRAG,
+      uniforms: {
+        uBurst: { value: 0 },
+        uOpacity: { value: 0 },
+        uPixelRatio: { value: this._pixelRatio },
+        uTex: { value: this.glow },
+        uHot: { value: new THREE.Color(0xfff2d0) },
+        uCool: { value: new THREE.Color(0xd43b12) },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const sparks = new THREE.Points(sGeo, this.sparkMat);
+    sparks.frustumCulled = false;
+    sparks.userData.skipFade = true;
+    g.add(sparks);
+    this._shaders.push(this.sparkMat);
+
+    const EMBERS = LOW_POWER ? 300 : 900;
+    const eGeo = new THREE.BufferGeometry();
+    const ePos = new Float32Array(EMBERS * 3);
+    const eSize = new Float32Array(EMBERS);
+    const eSeed = new Float32Array(EMBERS);
+    const eSpeed = new Float32Array(EMBERS);
+    for (let i = 0; i < EMBERS; i++) {
+      const r = Math.random() * 1.7;
+      const a = Math.random() * Math.PI * 2;
+      ePos[i * 3] = Math.cos(a) * r;
+      ePos[i * 3 + 1] = 0;
+      ePos[i * 3 + 2] = Math.sin(a) * r;
+      eSize[i] = 0.4 + Math.random() * 1.4;
+      eSeed[i] = Math.random();
+      eSpeed[i] = 0.6 + Math.random() * 1.6;
+    }
+    eGeo.setAttribute("position", new THREE.BufferAttribute(ePos, 3));
+    eGeo.setAttribute("aSize", new THREE.BufferAttribute(eSize, 1));
+    eGeo.setAttribute("aSeed", new THREE.BufferAttribute(eSeed, 1));
+    eGeo.setAttribute("aSpeed", new THREE.BufferAttribute(eSpeed, 1));
+    this.emberMat = new THREE.ShaderMaterial({
+      vertexShader: EMBER_VERT,
+      fragmentShader: EMBER_FRAG,
+      uniforms: {
+        uTime: { value: 0 },
+        uOpacity: { value: 0.85 },
+        uPixelRatio: { value: this._pixelRatio },
+        uTex: { value: this.glow },
+        uColor: { value: new THREE.Color(0xffa63d) },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    const embers = new THREE.Points(eGeo, this.emberMat);
+    embers.frustumCulled = false;
+    embers.userData.skipFade = true;
+    g.add(embers);
+    this._shaders.push(this.emberMat);
 
     this.scene.add(g);
     this.groupA = g;
   }
 
-  // ---- Phase B: machine -> crate -> container ship ----
   _initPhaseB() {
     const g = new THREE.Group();
 
     const machine = new THREE.Group();
-    machine.add(
-      new THREE.Mesh(
-        new THREE.BoxGeometry(1.4, 1, 1),
-        new THREE.MeshStandardMaterial({ color: 0xd9dee5, metalness: 0.65, roughness: 0.3, transparent: true })
-      )
+    const shell = new THREE.Mesh(
+      new THREE.BoxGeometry(1.45, 1.05, 1.05),
+      this._steelMaterial(0xdde3ea, 0.85, 0.3)
     );
     const drum = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.35, 0.35, 1.2, 20),
-      new THREE.MeshStandardMaterial({ color: 0xf59e0b, metalness: 0.55, roughness: 0.3, transparent: true })
+      new THREE.CylinderGeometry(0.36, 0.36, 1.25, 32),
+      this._steelMaterial(0xf59e0b, 0.9, 0.3)
     );
     drum.rotation.z = Math.PI / 2;
-    drum.position.x = 0.9;
-    machine.add(drum);
+    drum.position.x = 0.92;
+    machine.add(shell, drum);
+    machine.traverse((m) => {
+      if (m.isMesh) m.castShadow = !LOW_POWER;
+    });
     this.machine = machine;
     g.add(machine);
 
     this.crate = new THREE.Mesh(
-      new THREE.BoxGeometry(1.6, 1.3, 1.6),
-      new THREE.MeshStandardMaterial({ color: 0xb33b2e, metalness: 0.25, roughness: 0.6, transparent: true })
+      new THREE.BoxGeometry(1.65, 1.35, 1.65),
+      this._steelMaterial(0xb33b2e, 0.55, 0.52)
     );
+    this.crate.castShadow = !LOW_POWER;
     g.add(this.crate);
 
     const ship = new THREE.Group();
-    ship.add(
-      new THREE.Mesh(
-        new THREE.BoxGeometry(6, 0.8, 1.6),
-        new THREE.MeshStandardMaterial({ color: 0x25303d, metalness: 0.45, roughness: 0.6, transparent: true })
-      )
+    const hull = new THREE.Mesh(
+      new THREE.BoxGeometry(6.2, 0.85, 1.7),
+      this._steelMaterial(0x1f2a36, 0.8, 0.45)
     );
-    const colors = [0xb33b2e, 0x06b6d4, 0xf59e0b, 0x3c6e4f];
-    for (let i = 0; i < 10; i++) {
+    const deck = new THREE.Mesh(
+      new THREE.BoxGeometry(1.1, 0.7, 1.5),
+      this._steelMaterial(0xe6ebf2, 0.7, 0.4)
+    );
+    deck.position.set(2.3, 0.72, 0);
+    ship.add(hull, deck);
+    const colors = [0xb33b2e, 0x06b6d4, 0xf59e0b, 0x3c6e4f, 0xcfd6df];
+    for (let i = 0; i < 14; i++) {
       const box = new THREE.Mesh(
-        new THREE.BoxGeometry(0.8, 0.6, 1.3),
-        new THREE.MeshStandardMaterial({
-          color: colors[i % colors.length],
-          metalness: 0.25,
-          roughness: 0.6,
-          transparent: true,
-        })
+        new THREE.BoxGeometry(0.78, 0.6, 1.32),
+        this._steelMaterial(colors[i % colors.length], 0.6, 0.48)
       );
-      box.position.set(-2.4 + i * 0.55, 0.65 + (i % 2) * 0.62, 0);
+      box.position.set(-2.6 + (i % 7) * 0.62, 0.72 + Math.floor(i / 7) * 0.63, 0);
       ship.add(box);
     }
-    const deckGlow = this._sprite(0x06b6d4, 4.5, 0.4);
-    deckGlow.position.set(0, 0.8, 0);
+    ship.traverse((m) => {
+      if (m.isMesh) m.castShadow = !LOW_POWER;
+    });
+    const deckGlow = this._sprite(0x06b6d4, 5, 0.35);
+    deckGlow.position.set(0, 0.9, 0);
     ship.add(deckGlow);
     ship.position.set(0, -0.6, 0);
     this.ship = ship;
     g.add(ship);
 
+    this.waterNormal = waterNormalMap(this._maxAniso);
     this.water = new THREE.Mesh(
-      new THREE.PlaneGeometry(80, 80),
-      new THREE.MeshStandardMaterial({ color: 0x08263a, metalness: 0.4, roughness: 0.15, transparent: true })
+      new THREE.PlaneGeometry(90, 90),
+      new THREE.MeshStandardMaterial({
+        color: 0x061f31,
+        metalness: 0.65,
+        roughness: 0.12,
+        normalMap: this.waterNormal,
+        transparent: true,
+        envMapIntensity: 1.4,
+      })
     );
     this.water.rotation.x = -Math.PI / 2;
-    this.water.position.y = -1.0;
+    this.water.position.y = -1.02;
+    this.water.receiveShadow = !LOW_POWER;
     g.add(this.water);
 
     g.visible = false;
@@ -410,51 +749,71 @@ export class CinematicScene {
     this.groupB = g;
   }
 
-  // ---- Phase C: globe + trade route arcs ----
   _initPhaseC() {
     const g = new THREE.Group();
+    const maps = earthMaps(this._maxAniso);
 
     this.globe = new THREE.Mesh(
-      new THREE.SphereGeometry(GLOBE_R, 48, 48),
-      new THREE.MeshStandardMaterial({ map: earthTexture(), roughness: 0.8, metalness: 0.1, transparent: true })
+      new THREE.SphereGeometry(GLOBE_R, 96, 96),
+      new THREE.MeshStandardMaterial({
+        map: maps.map,
+        roughnessMap: maps.roughnessMap,
+        roughness: 1,
+        metalness: 0.35,
+        transparent: true,
+        envMapIntensity: 0.9,
+      })
     );
     g.add(this.globe);
 
-    const atmo = new THREE.Mesh(
-      new THREE.SphereGeometry(GLOBE_R * 1.05, 32, 32),
-      new THREE.MeshBasicMaterial({
-        color: 0x06b6d4,
-        transparent: true,
-        opacity: 0.14,
-        side: THREE.BackSide,
-        depthWrite: false,
-      })
-    );
+    this.atmoMat = new THREE.ShaderMaterial({
+      vertexShader: ATMO_VERT,
+      fragmentShader: ATMO_FRAG,
+      uniforms: {
+        uColor: { value: new THREE.Color(0x3fa9ff) },
+        uIntensity: { value: 0 },
+      },
+      transparent: true,
+      blending: THREE.AdditiveBlending,
+      side: THREE.BackSide,
+      depthWrite: false,
+    });
+    const atmo = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R * 1.09, 48, 48), this.atmoMat);
+    atmo.userData.skipFade = true;
     g.add(atmo);
 
-    const halo = this._sprite(0x1e6fd0, GLOBE_R * 4.4, 0.45);
+    const halo = this._sprite(0x1e6fd0, GLOBE_R * 4.6, 0.4);
     g.add(halo);
 
     const origin = latLonToVec3(CHINA.lat, CHINA.lon, GLOBE_R);
     this.arcs = [];
     OFFICES.forEach((office) => {
       const target = latLonToVec3(office.lat, office.lon, GLOBE_R);
-      const mid = origin.clone().add(target).multiplyScalar(0.5).normalize().multiplyScalar(GLOBE_R * 1.38);
+      const mid = origin.clone().add(target).multiplyScalar(0.5).normalize().multiplyScalar(GLOBE_R * 1.4);
       const curve = new THREE.QuadraticBezierCurve3(origin, mid, target);
-      const geo = new THREE.TubeGeometry(curve, 64, 0.016, 6, false);
-      const arc = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({ color: 0xffc04d, transparent: true, opacity: 0.95, fog: false })
-      );
-      geo.setDrawRange(0, 0);
-      arc.userData.maxIndex = geo.index.count;
-      arc.userData.marker = this._sprite(0xffc04d, 0.3, 0);
+      const mat = new THREE.ShaderMaterial({
+        vertexShader: ARC_VERT,
+        fragmentShader: ARC_FRAG,
+        uniforms: {
+          uReveal: { value: 0 },
+          uTime: { value: 0 },
+          uOpacity: { value: 0 },
+          uColor: { value: new THREE.Color(0xffc04d) },
+        },
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      });
+      const arc = new THREE.Mesh(new THREE.TubeGeometry(curve, 128, 0.018, 8, false), mat);
+      arc.userData.skipFade = true;
+      arc.userData.marker = this._sprite(0xffc04d, 0.32, 0);
       arc.userData.marker.position.copy(target);
       g.add(arc, arc.userData.marker);
       this.arcs.push(arc);
+      this._shaders.push(mat);
     });
 
-    this.originMarker = this._sprite(0xff8a3c, 0.45, 0.95);
+    this.originMarker = this._sprite(0xff8a3c, 0.48, 0.95);
     this.originMarker.position.copy(origin);
     g.add(this.originMarker);
 
@@ -471,7 +830,6 @@ export class CinematicScene {
     const aspect = w / h;
     this.camera.aspect = aspect;
     this.camera.updateProjectionMatrix();
-    // Portrait screens need extra distance to keep the subject framed.
     this._zBoost = aspect >= 1 ? 1 : clamp(1 / Math.max(aspect, 0.4), 1, 2.1);
     this.renderer.setSize(w, h, false);
   }
@@ -482,56 +840,36 @@ export class CinematicScene {
 
   _fade(group, opacity) {
     group.traverse((o) => {
-      if (o.material && o !== this.sparks && o !== this.embers) o.material.opacity = opacity;
+      if (o.material && !o.userData.skipFade) o.material.opacity = opacity;
     });
   }
 
-  _updatePhaseA(t, time, dt) {
+  _updatePhaseA(t, time) {
     const fade = 1 - smoothstep(t, 0.86, 1);
     this._fade(this.groupA, fade);
 
     const fall = smoothstep(t, 0.12, 0.26);
     const bob = REDUCED_MOTION ? 0 : Math.sin(time * 1.2) * 0.12 * (1 - fall);
-    this.hammer.position.y = lerp(1.9 + bob, 0.5, fall);
+    this.hammer.position.y = lerp(1.9 + bob, 0.52, fall);
     this.hammer.rotation.z = lerp(-0.22, 0, fall);
 
-    const pulse = REDUCED_MOTION ? 1 : 1 + Math.sin(time * 2.2) * 0.07;
-    const heat = 0.55 + fall * 0.5;
-    this.hearth.scale.setScalar(3.6 * pulse * heat);
-    this.hearth.material.opacity = 0.75 * fade * heat;
-
-    const ePos = this.embers.geometry.attributes.position;
-    for (let i = 0; i < ePos.count; i++) {
-      let y = ePos.array[i * 3 + 1] + this._emberSpeed[i] * dt;
-      if (y > 3.2) {
-        y = -0.4;
-        const r = Math.random() * 1.5;
-        const a = Math.random() * Math.PI * 2;
-        ePos.array[i * 3] = Math.cos(a) * r;
-        ePos.array[i * 3 + 2] = Math.sin(a) * r;
-      }
-      ePos.array[i * 3 + 1] = y;
-    }
-    ePos.needsUpdate = true;
-    this.embers.material.opacity = 0.8 * fade;
-
-    // Burst position is derived from scroll, so it scrubs cleanly in both directions.
     const burst = clamp((t - 0.26) / 0.5, 0, 1);
-    const sPos = this.sparks.geometry.attributes.position;
-    for (let i = 0; i < sPos.count; i++) {
-      sPos.array[i * 3] = this._sparkBase[i * 3] + this._sparkVel[i * 3] * burst * 0.9;
-      sPos.array[i * 3 + 1] =
-        this._sparkBase[i * 3 + 1] + this._sparkVel[i * 3 + 1] * burst * 0.9 - 2.4 * burst * burst;
-      sPos.array[i * 3 + 2] = this._sparkBase[i * 3 + 2] + this._sparkVel[i * 3 + 2] * burst * 0.9;
-    }
-    sPos.needsUpdate = true;
-    this.sparks.material.opacity = burst > 0 ? (1 - burst) * fade : 0;
+    const heat = 0.5 + fall * 0.55;
+    const pulse = REDUCED_MOTION ? 1 : 1 + Math.sin(time * 2.2) * 0.07;
+    this.hearth.scale.setScalar(3.8 * pulse * heat);
+    this.hearth.material.opacity = 0.72 * fade * heat;
+    this.forge.intensity = (2.5 + (1 - burst) * 9 * (burst > 0 ? 1 : 0.18)) * fade * heat;
+
+    this.sparkMat.uniforms.uBurst.value = burst;
+    this.sparkMat.uniforms.uOpacity.value = burst > 0 ? fade : 0;
+    this.emberMat.uniforms.uOpacity.value = 0.85 * fade;
 
     this._shake = t > 0.24 && t < 0.4 ? (1 - burst) * 0.14 : 0;
   }
 
-  _updatePhaseB(t, time) {
+  _updatePhaseB(t, time, dt) {
     this._shake = 0;
+    this.forge.intensity = 0;
     const fade = smoothstep(t, 0, 0.08) * (1 - smoothstep(t, 0.9, 1));
     this._fade(this.groupB, fade);
 
@@ -547,27 +885,32 @@ export class CinematicScene {
     this.ship.visible = t >= 0.5;
     this.water.visible = t >= 0.5;
     this.ship.scale.setScalar(lerp(0.35, 1, shipIn));
-    this.ship.position.x = lerp(-4, 2.6, smoothstep(t, 0.58, 1));
+    this.ship.position.x = lerp(-4.2, 2.6, smoothstep(t, 0.58, 1));
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
+
+    this.waterNormal.offset.x += dt * 0.012;
+    this.waterNormal.offset.y += dt * 0.02;
   }
 
   _updatePhaseC(t, time) {
     this._shake = 0;
+    this.forge.intensity = 0;
     const fade = smoothstep(t, 0, 0.1);
     this.globe.material.opacity = fade;
+    this.atmoMat.uniforms.uIntensity.value = fade * 0.85;
     this.groupC.scale.setScalar(lerp(0.55, 1, smoothstep(t, 0, 0.32)));
     this.groupC.rotation.y = (REDUCED_MOTION ? 0 : time * 0.04) + t * 0.5;
 
     this.arcs.forEach((arc, i) => {
-      const reveal = clamp((t - (0.22 + i * 0.07)) / 0.24, 0, 1);
-      arc.geometry.setDrawRange(0, Math.floor(arc.userData.maxIndex * reveal));
-      arc.material.opacity = fade;
+      const reveal = clamp((t - (0.2 + i * 0.07)) / 0.26, 0, 1);
+      arc.material.uniforms.uReveal.value = reveal;
+      arc.material.uniforms.uOpacity.value = fade;
       arc.userData.marker.material.opacity = reveal > 0.9 ? fade : 0;
     });
 
     const pulse = REDUCED_MOTION ? 1 : 1 + Math.sin(time * 3) * 0.18;
-    this.originMarker.scale.setScalar(0.45 * pulse);
+    this.originMarker.scale.setScalar(0.48 * pulse);
     this.originMarker.material.opacity = fade;
   }
 
@@ -585,7 +928,6 @@ export class CinematicScene {
       this._camTarget.set(0, 0, -2);
     }
 
-    // Scale distance from the target rather than the raw position, so framing survives portrait aspects.
     const offset = this._camBase.clone().sub(this._camTarget).multiplyScalar(this._zBoost);
     this.camera.position.copy(this._camTarget).add(offset);
 
@@ -604,21 +946,24 @@ export class CinematicScene {
   _tick() {
     requestAnimationFrame(() => this._tick());
 
-    // Clamped so a backgrounded tab resuming doesn't teleport the ember field.
     const dt = Math.min(this.clock.getDelta(), 0.05);
     const time = this.clock.getElapsedTime();
     const p = this.progress;
 
     this._mouse.lerp(this._mouseTarget, REDUCED_MOTION ? 0 : 0.06);
     this.dust.rotation.y = time * 0.012;
+    this.emberMat.uniforms.uTime.value = time;
+    this.arcs.forEach((a) => {
+      a.material.uniforms.uTime.value = time;
+    });
 
     const phase = p < 1 ? 0 : p < 2 ? 1 : 2;
     this.groupA.visible = phase === 0;
     this.groupB.visible = phase === 1;
     this.groupC.visible = phase === 2;
 
-    if (phase === 0) this._updatePhaseA(p, time, dt);
-    else if (phase === 1) this._updatePhaseB(p - 1, time);
+    if (phase === 0) this._updatePhaseA(p, time);
+    else if (phase === 1) this._updatePhaseB(p - 1, time, dt);
     else this._updatePhaseC(Math.min(p - 2, 1), time);
 
     this._updateCamera(p, time);

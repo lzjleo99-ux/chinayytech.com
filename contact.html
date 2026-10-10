@@ -66,15 +66,8 @@
     </div>
 
     <div>
-      <div class="form-banner" id="form-sent" hidden>
-        <span>✓</span>
-        <span>
-          <strong>Inquiry sent.</strong>
-          <p>Our regional team will reply to the phone number you provided. Thank you.</p>
-        </span>
-      </div>
-
-      <form class="contact-form glass" action="https://formsubmit.co/info@chinayytech.com" method="POST">
+      <div class="form-card glass">
+      <form class="contact-form" id="inquiry-form" action="https://formsubmit.co/info@chinayytech.com" method="POST">
       <input type="text" name="_honey" class="hp-field" tabindex="-1" autocomplete="off" />
       <input type="hidden" name="_subject" value="New Inquiry from Chinayytech.com" />
       <input type="hidden" name="_template" value="table" />
@@ -108,16 +101,43 @@
         <textarea id="message" name="message" required placeholder="Tell us what you're sourcing, quantities, and timeline…"></textarea>
       </div>
 
+      <p class="form-error" id="form-error" hidden></p>
       <button type="submit" class="btn btn-glow">Send Inquiry</button>
       <p class="form-note">Required fields are marked *. We reply by phone to the number you provide.</p>
       </form>
+
+      <div class="form-success" id="thank-you" hidden>
+        <div class="form-success__mark">✓</div>
+        <h2>Thank You!</h2>
+        <p>Your inquiry has been sent successfully. Our regional team will contact you shortly.</p>
+      </div>
+      </div>
 
       <p class="form-activation">
         <strong>Site owner note:</strong> this form is delivered by FormSubmit, which requires a
         <strong>one-time activation</strong>. The very first submission sends an activation link to
         <strong>info@chinayytech.com</strong> — until someone opens that mailbox and clicks the link,
-        no inquiries are delivered and submissions fail silently.
+        no inquiries are delivered. The debug console below shows FormSubmit's exact response.
       </p>
+    </div>
+  </div>
+</section>
+
+<section class="debug-section">
+  <div class="container">
+    <div class="debug-console glass">
+      <div class="debug-console__head">
+        <span class="debug-console__title">
+          <span class="debug-console__dot"></span>
+          Form Submission Debug Console / 表单调试日志窗口
+        </span>
+        <span class="debug-console__actions">
+          <button type="button" class="debug-btn" id="debug-copy">Copy Log</button>
+          <button type="button" class="debug-btn" id="debug-clear">Clear</button>
+          <button type="button" class="debug-btn" id="debug-toggle" aria-expanded="false" aria-controls="debug-log">Show Logs</button>
+        </span>
+      </div>
+      <div class="debug-console__log" id="debug-log" hidden></div>
     </div>
   </div>
 </section>

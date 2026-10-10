@@ -333,33 +333,74 @@ section { padding: 96px 0; position: relative; }
 .card h3 { font-size: 1.15rem; margin-bottom: 8px; }
 .card p { margin: 0; font-size: 0.94rem; }
 
+/* Symmetry here is structural: flex column + align-items center means every child
+   is centred on the same axis and gets identical left/right space at any width. */
 .pricing {
   background: radial-gradient(ellipse at top, rgba(6, 182, 212, 0.1), transparent 60%), var(--glass);
-  padding: 56px;
+  padding: 56px 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
 }
+.pricing > * { margin-left: auto; margin-right: auto; }
+.pricing .eyebrow {
+  display: block;
+  color: var(--cyan);
+  font-family: var(--font-display);
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  margin: 0 auto 12px;
+}
+.pricing h2 { margin: 0 auto 26px; }
 .pricing .formula {
   font-family: var(--font-display);
-  font-size: clamp(1.1rem, 2.4vw, 1.6rem);
+  font-size: clamp(1.05rem, 2.2vw, 1.55rem);
+  line-height: 1.35;
   color: var(--gold-bright);
   background: rgba(245, 158, 11, 0.08);
   border: 1px solid rgba(245, 158, 11, 0.3);
   border-radius: 12px;
-  padding: 18px 24px;
-  display: inline-block;
-  margin: 18px 0 8px;
+  padding: 20px 28px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto 18px;
+  text-align: center;
 }
-.pricing .formula small { display:block; font-family: var(--font-body); color: var(--text-dim); font-size: 0.8rem; margin-top: 6px; font-weight: 400; }
+.pricing .formula small {
+  display: block;
+  font-family: var(--font-body);
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  margin-top: 8px;
+  font-weight: 400;
+}
 .pricing .no-hidden {
-  display: inline-flex;
+  display: flex;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   color: var(--ok);
   font-size: 0.9rem;
-  margin: 18px 0 30px;
+  margin: 0 auto 30px;
+  text-align: center;
 }
-.pricing .cta-row { display: flex; flex-direction: column; align-items: center; gap: 10px; }
-.pricing .cta-note { font-size: 0.82rem; color: var(--text-dim); }
+.pricing .cta-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin: 0 auto;
+}
+.pricing .cta-note { font-size: 0.82rem; color: var(--text-dim); margin: 0 auto; max-width: 460px; }
+
+@media (max-width: 640px) {
+  .pricing { padding: 40px 20px; border-radius: 16px; }
+  .pricing .formula { padding: 16px 18px; }
+  .pricing .cta-row .btn { width: 100%; justify-content: center; text-align: center; }
+}
 
 .network {
   display: grid;
@@ -407,6 +448,8 @@ footer a:hover { color: var(--cyan); }
 .offices-list .card h3 { margin-bottom: 2px; }
 .offices-list .card p { margin: 0; }
 
+.form-card { overflow: hidden; }
+
 form.contact-form {
   padding: 32px;
   display: flex;
@@ -434,20 +477,35 @@ form.contact-form {
 
 .form-note { font-size: 0.82rem; color: var(--text-dim); margin: 0; }
 
-.form-banner {
-  display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  background: rgba(52, 211, 153, 0.1);
-  border: 1px solid rgba(52, 211, 153, 0.4);
-  border-radius: 12px;
-  padding: 16px 18px;
-  color: var(--ok);
-  font-size: 0.92rem;
-  margin-bottom: 24px;
+.form-success {
+  padding: 64px 32px;
+  text-align: center;
 }
-.form-banner strong { color: var(--ok); display: block; margin-bottom: 2px; }
-.form-banner p { color: var(--text-dim); margin: 0; font-size: 0.86rem; }
+.form-success__mark {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 20px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.9rem;
+  color: #04101f;
+  background: linear-gradient(135deg, #6ee7b7, var(--ok));
+  box-shadow: 0 0 30px rgba(52, 211, 153, 0.45);
+}
+.form-success h2 { font-size: 1.6rem; margin-bottom: 10px; }
+.form-success p { max-width: 380px; margin: 0 auto; }
+
+.form-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: #fca5a5;
+  font-size: 0.86rem;
+  margin: 0;
+}
 
 .form-activation {
   background: rgba(245, 158, 11, 0.08);
@@ -458,3 +516,71 @@ form.contact-form {
   color: var(--text-dim);
 }
 .form-activation strong { color: var(--gold-bright); }
+
+/* ---------- Debug console ---------- */
+.debug-section { padding: 0 0 96px; }
+.debug-console {
+  background: rgba(2, 8, 16, 0.85);
+  border-color: rgba(6, 182, 212, 0.25);
+  overflow: hidden;
+}
+.debug-console__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  border-bottom: 1px solid rgba(6, 182, 212, 0.2);
+  background: rgba(6, 182, 212, 0.05);
+}
+.debug-console__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  color: var(--cyan);
+  letter-spacing: 0.04em;
+}
+.debug-console__dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 10px var(--ok);
+}
+.debug-console__actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.debug-btn {
+  background: rgba(6, 182, 212, 0.08);
+  border: 1px solid rgba(6, 182, 212, 0.3);
+  border-radius: 6px;
+  color: var(--cyan);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.74rem;
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: 0.15s ease;
+}
+.debug-btn:hover { background: rgba(6, 182, 212, 0.18); color: #a5f3fc; }
+
+.debug-console__log {
+  margin: 0;
+  padding: 16px 18px;
+  max-height: 300px;
+  overflow-y: auto;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.78rem;
+  line-height: 1.7;
+  color: #7dd3a8;
+  background:
+    repeating-linear-gradient(180deg, rgba(6, 182, 212, 0.03) 0 1px, transparent 1px 3px),
+    rgba(1, 5, 11, 0.9);
+}
+.debug-console__log .log-line { white-space: pre-wrap; word-break: break-word; }
+.debug-console__log .log-info { color: #67e8f9; }
+.debug-console__log .log-debug { color: #7dd3a8; }
+.debug-console__log .log-payload { color: #e9d5a1; }
+.debug-console__log .log-ok { color: #4ade80; font-weight: 600; }
+.debug-console__log .log-warn { color: var(--gold-bright); }
+.debug-console__log .log-err { color: #fca5a5; font-weight: 600; }
