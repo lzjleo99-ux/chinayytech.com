@@ -705,7 +705,7 @@ export class CinematicScene {
     this.renderer.setPixelRatio(this._pixelRatio);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.34;
+    this.renderer.toneMappingExposure = 1.18;
     this.renderer.setClearColor(0x000000, 0);
     if (!LOW_POWER) {
       this.renderer.shadowMap.enabled = true;
@@ -857,9 +857,6 @@ export class CinematicScene {
     this.dust.userData.skipFade = true;
     this.scene.add(this.dust);
 
-    const wash = this._sprite(0x1e5fa8, 28, 0.45);
-    wash.position.set(-1.5, 0.5, -10);
-    this.scene.add(wash);
   }
 
   _initLights() {
@@ -884,7 +881,7 @@ export class CinematicScene {
     rim.position.set(-6, 2, -4);
     this.scene.add(rim);
 
-    this.forge = new THREE.PointLight(0xff8a2b, 0, 9, 2);
+    this.forge = new THREE.PointLight(0xff8a2b, 0, 7, 2);
     this.forge.position.set(0, 0.3, 0);
     this.scene.add(this.forge);
 
@@ -990,7 +987,7 @@ export class CinematicScene {
     bodyTaper.scale.set(1.55, 1, 1.08);
     const body = new THREE.Mesh(new THREE.BoxGeometry(1.95, 0.3, 0.84), anvilMat);
     body.position.y = 0.3;
-    const face = new THREE.Mesh(new THREE.BoxGeometry(1.99, 0.07, 0.86), this._steelMaterial(0xc9d2dc, 1.0, 0.16));
+    const face = new THREE.Mesh(new THREE.BoxGeometry(1.99, 0.07, 0.86), this._steelMaterial(0xc9d2dc, 0.92, 0.38));
     face.position.y = 0.48;
     const horn = new THREE.Mesh(new THREE.ConeGeometry(0.33, 1.0, 28), anvilMat);
     horn.rotation.z = -Math.PI / 2;
@@ -1006,9 +1003,9 @@ export class CinematicScene {
 
     // Sledgehammer: heavy horizontal head, tapered haft raked back.
     const hammer = new THREE.Group();
-    const headMat = this._steelMaterial(0x5a626e, 0.98, 0.28);
+    const headMat = this._steelMaterial(0x5a626e, 0.9, 0.42);
     const head = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.38, 0.38), headMat);
-    const faceL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.19, 0.1, 24), this._steelMaterial(0x8d96a2, 1.0, 0.2));
+    const faceL = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.19, 0.1, 24), this._steelMaterial(0x8d96a2, 0.9, 0.4));
     faceL.rotation.z = Math.PI / 2;
     faceL.position.x = -0.49;
     const faceR = faceL.clone();
@@ -1033,26 +1030,6 @@ export class CinematicScene {
     g.add(hammer);
     this.hammer = hammer;
 
-    this.smoke = [];
-    const smokeTex = smokeTexture();
-    for (let i = 0; i < (LOW_POWER ? 4 : 8); i++) {
-      const s = new THREE.Sprite(
-        new THREE.SpriteMaterial({
-          map: smokeTex,
-          color: 0x8fa3bd,
-          transparent: true,
-          opacity: 0,
-          depthWrite: false,
-          fog: false,
-        })
-      );
-      const a = (i / (LOW_POWER ? 4 : 8)) * Math.PI * 2;
-      s.userData.dir = new THREE.Vector3(Math.cos(a) * 1.5, 0.45 + Math.random() * 0.5, Math.sin(a) * 1.5);
-      s.userData.seed = Math.random();
-      s.userData.skipFade = true;
-      g.add(s);
-      this.smoke.push(s);
-    }
 
     const SPARKS = LOW_POWER ? 2500 : 7000;
     const sGeo = new THREE.BufferGeometry();
@@ -1506,9 +1483,6 @@ export class CinematicScene {
 
     // No fresnel shell: it drew a hard blue ring around the limb. A wide, faint
     // sprite behind the globe gives depth without outlining it.
-    const halo = this._sprite(0x1b4f90, GLOBE_R * 5.2, 0.16);
-    g.add(halo);
-
     const origin = latLonToVec3(CHINA.lat, CHINA.lon, GLOBE_R);
     this.arcs = [];
     OFFICES.forEach((office) => {
@@ -1594,20 +1568,11 @@ export class CinematicScene {
 
     const impact = burst > 0 ? Math.pow(1 - burst, 2.2) : 0;
     const heat = 0.25 + impact * 0.95;
-    this.forge.intensity = (2.6 + impact * 30) * fade;
+    this.forge.intensity = (1.1 + impact * 7) * fade;
 
     this.sparkMat.uniforms.uBurst.value = burst;
     this.sparkMat.uniforms.uOpacity.value = burst > 0 ? fade : 0;
     this.emberMat.uniforms.uOpacity.value = (0.3 + impact * 0.5) * fade;
-
-    this.smoke.forEach((s, i) => {
-      const grow = burst;
-      const d = s.userData.dir;
-      s.position.set(d.x * grow * 1.15, 0.5 + d.y * grow * 1.5, d.z * grow * 1.15);
-      s.scale.setScalar(1.1 + grow * 4.2 + s.userData.seed);
-      s.material.opacity = burst > 0 ? Math.sin(Math.min(burst, 1) * Math.PI) * 0.26 * fade : 0;
-      s.material.rotation = s.userData.seed * 6.28 + grow * (i % 2 ? 0.5 : -0.5);
-    });
 
     this._shake = burst > 0 && burst < 0.35 ? (1 - burst / 0.35) * 0.2 : 0;
   }
