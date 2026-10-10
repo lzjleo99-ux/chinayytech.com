@@ -692,7 +692,7 @@ varying float vTail;
 void main() {
   float t = max(uBurst - aTail * aTrail, 0.0);
   vec3 p = position + aVel * t * 0.95;
-  p.y -= 4.6 * t * t;
+  p.y -= 3.9 * t * t;
   p.x += sin(aSeed * 6.283 + t * 9.0) * 0.05 * t;
   p.z += cos(aSeed * 6.283 + t * 7.5) * 0.05 * t;
   vFade = clamp(1.0 - uBurst, 0.0, 1.0) * (0.35 + 0.65 * aSeed);
@@ -1118,7 +1118,7 @@ export class CinematicScene {
     this.hammer = hammer;
 
 
-    const SPARKS = LOW_POWER ? 2500 : 7000;
+    const SPARKS = LOW_POWER ? 4000 : 12000;
     const sGeo = new THREE.BufferGeometry();
     const sPos = new Float32Array(SPARKS * 6);
     const sVel = new Float32Array(SPARKS * 6);
@@ -1131,14 +1131,14 @@ export class CinematicScene {
       const oz = (Math.random() - 0.5) * 0.3;
       const theta = Math.random() * Math.PI * 2;
       // Shallow cone: a forge strike throws sparks sideways, not straight up.
-      const phi = Math.acos(1 - Math.random() * 1.45);
+      const phi = Math.acos(1 - Math.random() * 1.62);
       // Heavy tail on the speed curve so a few sparks fly far and streak long.
-      const speed = 1.1 + Math.pow(Math.random(), 2.0) * 4.6;
+      const speed = 1.7 + Math.pow(Math.random(), 1.7) * 6.0;
       const vx = Math.sin(phi) * Math.cos(theta) * speed;
       const vy = Math.abs(Math.cos(phi)) * speed * 0.55 + 0.35;
       const vz = Math.sin(phi) * Math.sin(theta) * speed;
       const seed = Math.random();
-      const trail = 0.022 + Math.min(speed / 5.7, 1) * 0.055;
+      const trail = 0.03 + Math.min(speed / 7.7, 1) * 0.09;
       for (let v = 0; v < 2; v++) {
         const k = i * 2 + v;
         sPos[k * 3] = ox;
@@ -1675,7 +1675,7 @@ export class CinematicScene {
 
   _updatePhaseB(raw, time, dt) {
     this._shake = 0;
-    const fade = smoothstep(raw, -OVERLAP, OVERLAP) * (1 - smoothstep(raw, 1 - OVERLAP, 1 + OVERLAP));
+    const fade = smoothstep(raw, -OVERLAP, OVERLAP) * (1 - smoothstep(raw, 1.0, 1.22));
     this._fade(this.groupB, fade);
     const t = clamp(raw, 0, 1);
 
@@ -1742,11 +1742,11 @@ export class CinematicScene {
     // -- ship berths well before the lift, departs well after it lands
     const berth = smoothstep(t, 0.5, 0.68);
     // raw, not clamped t: the departure carries on through the crossfade to phase 3.
-    const depart = smoothstep(raw, 0.95, 1.14);
+    const depart = smoothstep(raw, 0.95, 1.1);
     this.ship.visible = berth > 0;
     this.water.visible = t > 0.36;
     this._setOpacity(this.water, fade * smoothstep(t, 0.36, 0.5));
-    this.ship.position.x = lerp(-12, -3.8, berth) + depart * 11;
+    this.ship.position.x = lerp(-12, -3.8, berth) + depart * 16;
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
 
@@ -1786,7 +1786,8 @@ export class CinematicScene {
   _updatePhaseC(raw, time) {
     this._shake = 0;
     const t = clamp(raw, 0, 1);
-    const fade = smoothstep(raw, -OVERLAP, OVERLAP);
+    // Held back so the ship is off frame before the planet arrives.
+    const fade = smoothstep(raw, 0.05, 0.28);
     this.globe.material.opacity = fade;
     if (this.clouds) this.clouds.material.opacity = fade * 0.42;
     this.groupC.scale.setScalar(lerp(0.55, 1, smoothstep(t, 0, 0.32)));
@@ -1876,8 +1877,8 @@ export class CinematicScene {
     // each group was toggled on exactly where the last one switched off, so the
     // opacity ramps never actually overlapped and the cut was visible.
     const aVis = p < 1 + OVERLAP;
-    const bVis = p > 1 - OVERLAP && p < 2 + OVERLAP;
-    const cVis = p > 2 - OVERLAP;
+    const bVis = p > 1 - OVERLAP && p < 2.25;
+    const cVis = p > 2.03;
     this.groupA.visible = aVis;
     this.groupB.visible = bVis;
     this.groupC.visible = cVis;
