@@ -65,12 +65,21 @@
       </div>
     </div>
 
-    <form class="contact-form glass" action="https://formsubmit.co/info@chinayytech.com" method="POST">
+    <div>
+      <div class="form-banner" id="form-sent" hidden>
+        <span>✓</span>
+        <span>
+          <strong>Inquiry sent.</strong>
+          <p>Our regional team will reply to the phone number you provided. Thank you.</p>
+        </span>
+      </div>
+
+      <form class="contact-form glass" action="https://formsubmit.co/info@chinayytech.com" method="POST">
       <input type="text" name="_honey" class="hp-field" tabindex="-1" autocomplete="off" />
-      <input type="hidden" name="_subject" value="New inquiry — China YY Tech website" />
+      <input type="hidden" name="_subject" value="New Inquiry from Chinayytech.com" />
       <input type="hidden" name="_template" value="table" />
-      <input type="hidden" name="_captcha" value="true" />
-      <input type="hidden" name="_next" value="https://chinayytech.com/contact.html?sent=1" />
+      <input type="hidden" name="_captcha" value="false" />
+      <input type="hidden" name="_next" value="https://www.chinayytech.com/contact.html?sent=1" />
 
       <div class="field">
         <label for="full_name">Full Name / 姓名 *</label>
@@ -100,8 +109,16 @@
       </div>
 
       <button type="submit" class="btn btn-glow">Send Inquiry</button>
-      <p class="form-note">By submitting, you'll receive a confirmation request from FormSubmit the first time — this verifies delivery to our team.</p>
-    </form>
+      <p class="form-note">Required fields are marked *. We reply by phone to the number you provide.</p>
+      </form>
+
+      <p class="form-activation">
+        <strong>Site owner note:</strong> this form is delivered by FormSubmit, which requires a
+        <strong>one-time activation</strong>. The very first submission sends an activation link to
+        <strong>info@chinayytech.com</strong> — until someone opens that mailbox and clicks the link,
+        no inquiries are delivered and submissions fail silently.
+      </p>
+    </div>
   </div>
 </section>
 
