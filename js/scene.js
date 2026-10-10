@@ -177,32 +177,72 @@ function waterNormalMap(maxAnisotropy) {
   return t;
 }
 
+// Corrugated shipping-container side with baked rib shading, corner castings,
+// grime and the company branding. Ribs are what stop a plain box reading as a block.
+function containerTexture(baseColor, brand, maxAnisotropy) {
+  const { c, ctx } = canvas2d(512, 256);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, 512, 256);
+
+  for (let x = 0; x < 512; x += 16) {
+    const g = ctx.createLinearGradient(x, 0, x + 16, 0);
+    g.addColorStop(0, "rgba(0,0,0,0.34)");
+    g.addColorStop(0.34, "rgba(255,255,255,0.12)");
+    g.addColorStop(0.66, "rgba(255,255,255,0.05)");
+    g.addColorStop(1, "rgba(0,0,0,0.34)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 16, 16, 224);
+  }
+
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
+  ctx.fillRect(0, 0, 512, 16);
+  ctx.fillRect(0, 240, 512, 16);
+  ctx.fillStyle = "rgba(16,20,26,0.92)";
+  [[0, 0], [478, 0], [0, 234], [478, 234]].forEach(([x, y]) => ctx.fillRect(x, y, 34, 22));
+
+  for (let i = 0; i < 140; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.13})`;
+    ctx.fillRect(Math.random() * 512, Math.random() * 256, Math.random() * 44, Math.random() * 7);
+  }
+
+  if (brand) {
+    // System sans only: webfonts may not be loaded when this canvas is rasterised.
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.55)";
+    ctx.shadowBlur = 5;
+    ctx.fillStyle = "rgba(255,255,255,0.96)";
+    ctx.font = "bold 42px Helvetica, Arial, sans-serif";
+    ctx.fillText("CHINA YY TECH", 256, 108);
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.font = "500 19px Helvetica, Arial, sans-serif";
+    ctx.fillText("chinayytech.com", 256, 146);
+    ctx.shadowBlur = 0;
+  }
+
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = maxAnisotropy;
+  return t;
+}
+
 function earthMaps(maxAnisotropy) {
   const w = 2048, h = 1024;
   const { c, ctx } = canvas2d(w, h);
   const { c: rc, ctx: rctx } = canvas2d(w, h);
 
   const ocean = ctx.createLinearGradient(0, 0, 0, h);
-  ocean.addColorStop(0, "#05162c");
-  ocean.addColorStop(0.5, "#0a2b50");
-  ocean.addColorStop(1, "#05162c");
+  ocean.addColorStop(0, "#071d33");
+  ocean.addColorStop(0.18, "#0a2742");
+  ocean.addColorStop(0.5, "#0b3056");
+  ocean.addColorStop(0.82, "#0a2742");
+  ocean.addColorStop(1, "#071d33");
   ctx.fillStyle = ocean;
   ctx.fillRect(0, 0, w, h);
   rctx.fillStyle = "#2a2a2a"; // low roughness over water
   rctx.fillRect(0, 0, w, h);
 
   const project = (lat, lon) => [((lon + 180) / 360) * w, ((90 - lat) / 180) * h];
-
-  ctx.strokeStyle = "rgba(6,182,212,0.08)";
-  ctx.lineWidth = 1.5;
-  for (let lon = -180; lon <= 180; lon += 20) {
-    const [x] = project(0, lon);
-    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke();
-  }
-  for (let lat = -80; lat <= 80; lat += 20) {
-    const [, y] = project(lat, 0);
-    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
-  }
 
   const land = [
     [[66,30],[62,60],[70,90],[73,130],[66,170],[60,160],[54,140],[50,130],[43,132],[35,126],[30,122],[22,110],[10,105],[8,98],[18,95],[22,90],[20,72],[25,65],[32,48],[38,45],[42,50],[48,40],[55,33],[60,28]],
@@ -212,23 +252,69 @@ function earthMaps(maxAnisotropy) {
     [[12,-72],[8,-60],[0,-50],[-8,-35],[-23,-41],[-34,-54],[-46,-67],[-54,-70],[-42,-73],[-30,-71],[-18,-70],[-5,-78],[6,-77]],
     [[-11,114],[-13,131],[-11,143],[-20,149],[-32,152],[-38,145],[-35,136],[-32,126],[-22,114]],
   ];
-  const drawLand = (context, fill, stroke) => {
-    context.fillStyle = fill;
-    context.strokeStyle = stroke;
-    context.lineWidth = 2;
+  const landPath = (context) => {
+    context.beginPath();
     land.forEach((poly) => {
-      context.beginPath();
       poly.forEach(([lat, lon], i) => {
         const [x, y] = project(lat, lon);
         if (i === 0) context.moveTo(x, y); else context.lineTo(x, y);
       });
       context.closePath();
-      context.fill();
-      context.stroke();
     });
   };
-  drawLand(ctx, "#164a3c", "rgba(52,211,153,0.4)");
-  drawLand(rctx, "#d8d8d8", "#d8d8d8"); // high roughness over land
+
+  // Continental shelf: a soft lighter halo under the coast, no hard outline.
+  ctx.save();
+  ctx.shadowColor = "rgba(90,170,210,0.55)";
+  ctx.shadowBlur = 26;
+  ctx.fillStyle = "#0e3a5c";
+  landPath(ctx);
+  ctx.fill();
+  ctx.restore();
+
+  // Latitude-banded terrain colour, clipped to land: tundra, boreal, temperate,
+  // desert, tropics. Flat green is a big part of what reads as cartoonish.
+  ctx.save();
+  landPath(ctx);
+  ctx.clip();
+  const terrain = ctx.createLinearGradient(0, 0, 0, h);
+  terrain.addColorStop(0.0, "#d8e4ea");
+  terrain.addColorStop(0.1, "#8e9c92");
+  terrain.addColorStop(0.2, "#3f5a43");
+  terrain.addColorStop(0.31, "#4a6b45");
+  terrain.addColorStop(0.42, "#8d8554");
+  terrain.addColorStop(0.5, "#997f4e");
+  terrain.addColorStop(0.58, "#4e7044");
+  terrain.addColorStop(0.72, "#6f7d4a");
+  terrain.addColorStop(0.86, "#7d8b6a");
+  terrain.addColorStop(1.0, "#d8e4ea");
+  ctx.fillStyle = terrain;
+  ctx.fillRect(0, 0, w, h);
+  for (let i = 0; i < 2200; i++) {
+    ctx.fillStyle = `rgba(${Math.random() > 0.5 ? "0,0,0" : "255,255,255"},${Math.random() * 0.07})`;
+    const r = 4 + Math.random() * 26;
+    ctx.beginPath();
+    ctx.arc(Math.random() * w, Math.random() * h, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Polar ice
+  const ice = (y0, y1, from, to) => {
+    const gr = ctx.createLinearGradient(0, y0, 0, y1);
+    gr.addColorStop(0, from);
+    gr.addColorStop(1, to);
+    ctx.fillStyle = gr;
+    ctx.fillRect(0, Math.min(y0, y1), w, Math.abs(y1 - y0));
+  };
+  ice(0, h * 0.075, "rgba(240,248,255,0.95)", "rgba(240,248,255,0)");
+  ice(h, h * 0.9, "rgba(240,248,255,0.95)", "rgba(240,248,255,0)");
+
+  rctx.save();
+  landPath(rctx);
+  rctx.fillStyle = "#d8d8d8"; // high roughness over land
+  rctx.fill();
+  rctx.restore();
 
   const map = new THREE.CanvasTexture(c);
   map.colorSpace = THREE.SRGBColorSpace;
@@ -248,7 +334,7 @@ varying float vFade;
 void main() {
   float t = uBurst;
   vec3 p = position + aVel * t * 0.9;
-  p.y -= 2.4 * t * t;
+  p.y -= 3.4 * t * t;
   p.x += sin(aSeed * 6.283 + t * 9.0) * 0.07 * t;
   p.z += cos(aSeed * 6.283 + t * 7.5) * 0.07 * t;
   vFade = clamp(1.0 - t, 0.0, 1.0) * (0.45 + 0.55 * aSeed);
@@ -594,9 +680,11 @@ export class CinematicScene {
       const theta = Math.random() * Math.PI * 2;
       const phi = Math.random() * Math.PI * 0.5;
       const speed = 1.3 + Math.pow(Math.random(), 0.6) * 4.6;
-      sVel[i * 3] = Math.sin(phi) * Math.cos(theta) * speed;
-      sVel[i * 3 + 1] = Math.cos(phi) * speed * 1.35 + 1.0;
-      sVel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed;
+      // Biased outward rather than upward, so the burst sprays wide across the
+      // lower frame instead of fountaining up through the headline.
+      sVel[i * 3] = Math.sin(phi) * Math.cos(theta) * speed * 1.35;
+      sVel[i * 3 + 1] = Math.cos(phi) * speed * 0.85 + 0.5;
+      sVel[i * 3 + 2] = Math.sin(phi) * Math.sin(theta) * speed * 1.35;
       sSize[i] = 0.5 + Math.random() * 2.2;
       sSeed[i] = Math.random();
     }
@@ -702,21 +790,98 @@ export class CinematicScene {
       new THREE.BoxGeometry(6.2, 0.85, 1.7),
       this._steelMaterial(0x1f2a36, 0.8, 0.45)
     );
-    const deck = new THREE.Mesh(
-      new THREE.BoxGeometry(1.1, 0.7, 1.5),
-      this._steelMaterial(0xe6ebf2, 0.7, 0.4)
+    ship.add(hull);
+
+    const boot = new THREE.Mesh(
+      new THREE.BoxGeometry(6.26, 0.18, 1.76),
+      this._steelMaterial(0x7c2d12, 0.4, 0.6)
     );
-    deck.position.set(2.3, 0.72, 0);
-    ship.add(hull, deck);
-    const colors = [0xb33b2e, 0x06b6d4, 0xf59e0b, 0x3c6e4f, 0xcfd6df];
-    for (let i = 0; i < 14; i++) {
-      const box = new THREE.Mesh(
-        new THREE.BoxGeometry(0.78, 0.6, 1.32),
-        this._steelMaterial(colors[i % colors.length], 0.6, 0.48)
+    boot.position.y = -0.36;
+    ship.add(boot);
+
+    // Angled plates form a bow instead of leaving the hull a flat-ended slab.
+    [-1, 1].forEach((side) => {
+      const plate = new THREE.Mesh(
+        new THREE.BoxGeometry(1.5, 0.85, 0.12),
+        this._steelMaterial(0x1f2a36, 0.8, 0.45)
       );
-      box.position.set(-2.6 + (i % 7) * 0.62, 0.72 + Math.floor(i / 7) * 0.63, 0);
-      ship.add(box);
+      plate.position.set(-3.45, 0, side * 0.44);
+      plate.rotation.y = side * 0.62;
+      ship.add(plate);
+    });
+
+    const house = new THREE.Mesh(
+      new THREE.BoxGeometry(1.05, 0.95, 1.32),
+      this._steelMaterial(0xe6ebf2, 0.6, 0.42)
+    );
+    house.position.set(2.2, 0.9, 0);
+    const bridge = new THREE.Mesh(
+      new THREE.BoxGeometry(1.08, 0.22, 1.36),
+      new THREE.MeshStandardMaterial({
+        color: 0x0b1a2a,
+        metalness: 0.9,
+        roughness: 0.12,
+        transparent: true,
+        envMapIntensity: 1.6,
+      })
+    );
+    bridge.position.set(2.2, 1.16, 0);
+    const funnel = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.17, 0.19, 0.52, 24),
+      this._steelMaterial(0x2b3542, 0.7, 0.45)
+    );
+    funnel.position.set(2.62, 1.6, 0);
+    const funnelBand = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.2, 0.14, 24),
+      this._steelMaterial(0xf59e0b, 0.8, 0.35)
+    );
+    funnelBand.position.set(2.62, 1.68, 0);
+    ship.add(house, bridge, funnel, funnelBand);
+
+    // Containers run length-wise along X with their branded long face outboard.
+    const topTex = containerTexture("#9aa1a9", false, this._maxAniso);
+    const endTex = containerTexture("#8b9199", false, this._maxAniso);
+    const matCache = new Map();
+    const containerMat = (hex) => {
+      if (matCache.has(hex)) return matCache.get(hex);
+      const side = new THREE.MeshStandardMaterial({
+        map: containerTexture(hex, true, this._maxAniso),
+        metalness: 0.45,
+        roughness: 0.52,
+        transparent: true,
+        envMapIntensity: 1.1,
+      });
+      const top = new THREE.MeshStandardMaterial({
+        map: topTex,
+        metalness: 0.45,
+        roughness: 0.6,
+        transparent: true,
+      });
+      const end = new THREE.MeshStandardMaterial({
+        map: endTex,
+        metalness: 0.45,
+        roughness: 0.55,
+        transparent: true,
+      });
+      // BoxGeometry face order: +X, -X, +Y, -Y, +Z, -Z
+      const mats = [end, end, top, top, side, side];
+      matCache.set(hex, mats);
+      return mats;
+    };
+    const palette = ["#b33b2e", "#0e7490", "#b45309", "#3c6e4f"];
+    const geo = new THREE.BoxGeometry(1.28, 0.62, 0.76);
+    let n = 0;
+    for (let bay = 0; bay < 3; bay++) {
+      for (let row = 0; row < 2; row++) {
+        for (let tier = 0; tier < 2; tier++) {
+          const box = new THREE.Mesh(geo, containerMat(palette[n % palette.length]));
+          box.position.set(-2.35 + bay * 1.34, 0.74 + tier * 0.64, row === 0 ? 0.41 : -0.41);
+          ship.add(box);
+          n++;
+        }
+      }
     }
+
     ship.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
@@ -789,7 +954,14 @@ export class CinematicScene {
     this.arcs = [];
     OFFICES.forEach((office) => {
       const target = latLonToVec3(office.lat, office.lon, GLOBE_R);
-      const mid = origin.clone().add(target).multiplyScalar(0.5).normalize().multiplyScalar(GLOBE_R * 1.4);
+      // Long routes arc higher so they clear the limb instead of vanishing behind it.
+      const spread = origin.angleTo(target) / Math.PI;
+      const mid = origin
+        .clone()
+        .add(target)
+        .multiplyScalar(0.5)
+        .normalize()
+        .multiplyScalar(GLOBE_R * (1.2 + spread * 0.75));
       const curve = new THREE.QuadraticBezierCurve3(origin, mid, target);
       const mat = new THREE.ShaderMaterial({
         vertexShader: ARC_VERT,
@@ -818,6 +990,10 @@ export class CinematicScene {
     g.add(this.originMarker);
 
     g.position.set(0, 0, -2);
+    // Fixed orientation with China facing the camera: Y brings its longitude round
+    // to +Z, X tilts its latitude down to centre. Default Euler order (XYZ) applies
+    // Y before X, which is the order this needs. The globe never rotates.
+    g.rotation.set(THREE.MathUtils.degToRad(CHINA.lat), -Math.atan2(origin.x, origin.z), 0);
     g.visible = false;
     this.scene.add(g);
     this.groupC = g;
@@ -840,7 +1016,11 @@ export class CinematicScene {
 
   _fade(group, opacity) {
     group.traverse((o) => {
-      if (o.material && !o.userData.skipFade) o.material.opacity = opacity;
+      if (!o.material || o.userData.skipFade) return;
+      // Multi-material meshes (containers) expose an array; assigning .opacity
+      // to the array itself would silently do nothing.
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) m.opacity = opacity;
     });
   }
 
@@ -900,7 +1080,6 @@ export class CinematicScene {
     this.globe.material.opacity = fade;
     this.atmoMat.uniforms.uIntensity.value = fade * 0.85;
     this.groupC.scale.setScalar(lerp(0.55, 1, smoothstep(t, 0, 0.32)));
-    this.groupC.rotation.y = (REDUCED_MOTION ? 0 : time * 0.04) + t * 0.5;
 
     this.arcs.forEach((arc, i) => {
       const reveal = clamp((t - (0.2 + i * 0.07)) / 0.26, 0, 1);
@@ -916,8 +1095,10 @@ export class CinematicScene {
 
   _updateCamera(p, time) {
     if (p < 1) {
-      this._camBase.set(2.4, 2.0, lerp(6.6, 5.8, p));
-      this._camTarget.set(0, 1.0, 0);
+      // Target sits above the anvil so the subject composes into the lower frame,
+      // leaving the upper band clear for the headline.
+      this._camBase.set(2.6, 3.1, lerp(7.3, 6.5, p));
+      this._camTarget.set(0, 2.05, 0);
     } else if (p < 2) {
       const t = p - 1;
       this._camBase.set(lerp(-0.6, 1.8, t), lerp(1.8, 1.3, t), lerp(5.4, 7.6, t));

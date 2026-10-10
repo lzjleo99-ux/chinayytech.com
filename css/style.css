@@ -216,25 +216,45 @@ img, canvas { display: block; max-width: 100%; }
     radial-gradient(ellipse 80% 60% at 20% 30%, rgba(30, 95, 168, 0.35), transparent 70%),
     linear-gradient(180deg, #02040a 0%, #061024 45%, #0d2c4d 72%, #02040a 100%);
 }
-#webgl { position: absolute; inset: 0; width: 100%; height: 100%; }
+#webgl { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
 .no-webgl #webgl { display: none; }
+
+/* Vignette between the 3D scene and the copy. The subject is framed low, this
+   darkens the upper band so the headline always has contrast behind it. */
+.storyboard__scrim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 62% 34% at 50% 28%, rgba(3, 7, 18, 0.78), transparent 72%),
+    linear-gradient(
+      180deg,
+      rgba(3, 7, 18, 0.9) 0%,
+      rgba(3, 7, 18, 0.58) 26%,
+      rgba(3, 7, 18, 0.06) 50%,
+      rgba(3, 7, 18, 0.34) 80%,
+      rgba(3, 7, 18, 0.82) 100%
+    );
+}
 
 .storyboard__overlay {
   position: absolute;
   inset: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
+  z-index: 2;
   text-align: center;
   pointer-events: none;
-  padding: 0 20px;
 }
+/* Explicit top/left rather than flex centring: these are absolutely positioned,
+   so relying on the parent's justify-content would be fragile. */
 .storyboard__caption {
   position: absolute;
+  top: clamp(132px, 19vh, 210px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, calc(100% - 40px));
   opacity: 0;
   transition: opacity 0.4s ease;
-  max-width: 720px;
 }
 .storyboard__caption.is-active { opacity: 1; }
 .storyboard__caption .eyebrow {
@@ -244,14 +264,19 @@ img, canvas { display: block; max-width: 100%; }
   font-size: 0.8rem;
   text-transform: uppercase;
   margin-bottom: 10px;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.9);
 }
 .storyboard__caption h1, .storyboard__caption h2 {
   font-size: clamp(1.8rem, 5vw, 3.2rem);
-  text-shadow: 0 4px 30px rgba(0,0,0,0.6);
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.92),
+    0 6px 26px rgba(0, 0, 0, 0.85),
+    0 0 70px rgba(0, 0, 0, 0.6);
 }
 .storyboard__caption p {
-  color: #c9d2e3;
+  color: #dbe3f0;
   font-size: 1.05rem;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.95), 0 0 30px rgba(0, 0, 0, 0.8);
 }
 
 .storyboard__scroll-hint {
@@ -271,12 +296,17 @@ img, canvas { display: block; max-width: 100%; }
 /* ---------- HUD phase indicator ---------- */
 .hud-phases {
   position: absolute;
-  top: 100px;
+  top: 88px;
   left: 50%;
   transform: translateX(-50%);
+  z-index: 3;
   display: flex;
   gap: 12px;
   pointer-events: none;
+}
+@media (max-width: 560px) {
+  .hud-phases { gap: 6px; }
+  .hud-phase { padding: 6px 10px; font-size: 0.66rem; }
 }
 .hud-phase {
   padding: 8px 16px;
