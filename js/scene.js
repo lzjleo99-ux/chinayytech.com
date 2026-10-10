@@ -253,8 +253,8 @@ const CAM_KEYS = [
   { p: 1.0, pos: [1.5, 1.6, 3.9], look: [0, 0.66, 0] },
   { p: 1.3, pos: [1.9, 1.5, 4.3], look: [0.5, 0.62, 0] },
   { p: 1.55, pos: [2.2, 1.7, 5.2], look: [0.9, 0.6, 0] },
-  { p: 1.78, pos: [1.4, 2.6, 7.2], look: [0.3, 1.2, 0] },
-  { p: 2.0, pos: [0.4, 1.4, 9.0], look: [0.2, 0.2, -0.5] },
+  { p: 1.78, pos: [1.0, 3.3, 11.2], look: [-1.1, 1.15, 0] },
+  { p: 2.0, pos: [0.4, 1.6, 10.4], look: [-0.6, 0.2, -0.5] },
   { p: 2.45, pos: [0.25, 0.9, 8.8], look: [0.2, 0, -1.35] },
   { p: 3.0, pos: [0, 0.5, 9.6], look: [0, 0, -2] },
 ];
@@ -1171,23 +1171,31 @@ export class CinematicScene {
     base.position.y = -CH / 2;
     crate.add(base);
 
+    // The four walls stand apart from the base, splayed outward, and close in on
+    // it. Hinging them flat on the floor just read as a pallet with sides rising.
     this.cratePanels = [];
-    const addPanel = (geo, pivotPos, panelPos, axis, openAngle) => {
+    const addPanel = (geo, hinge, outward, axis, sign) => {
       const pivot = new THREE.Group();
-      pivot.position.copy(pivotPos);
+      pivot.position.copy(hinge);
       const panel = new THREE.Mesh(geo, this._crateMaterial(1));
-      panel.position.copy(panelPos);
+      panel.position.set(0, CH / 2, 0);
       pivot.add(panel);
       crate.add(pivot);
-      this.cratePanels.push({ pivot, axis, openAngle });
+      this.cratePanels.push({
+        pivot,
+        axis,
+        sign,
+        closed: hinge.clone(),
+        open: hinge.clone().add(outward),
+      });
     };
     const longGeo = new THREE.BoxGeometry(CW, CH, CT);
     const endGeo = new THREE.BoxGeometry(CT, CH, CD);
-    const hingeY = -CH / 2 + CT / 2;
-    addPanel(longGeo, new THREE.Vector3(0, hingeY, CD / 2), new THREE.Vector3(0, CH / 2, 0), "x", Math.PI / 2);
-    addPanel(longGeo, new THREE.Vector3(0, hingeY, -CD / 2), new THREE.Vector3(0, CH / 2, 0), "x", -Math.PI / 2);
-    addPanel(endGeo, new THREE.Vector3(CW / 2, hingeY, 0), new THREE.Vector3(0, CH / 2, 0), "z", -Math.PI / 2);
-    addPanel(endGeo, new THREE.Vector3(-CW / 2, hingeY, 0), new THREE.Vector3(0, CH / 2, 0), "z", Math.PI / 2);
+    const hy = -CH / 2 + CT / 2;
+    addPanel(longGeo, new THREE.Vector3(0, hy, CD / 2), new THREE.Vector3(0, 0.1, 0.52), "x", 1);
+    addPanel(longGeo, new THREE.Vector3(0, hy, -CD / 2), new THREE.Vector3(0, 0.1, -0.52), "x", -1);
+    addPanel(endGeo, new THREE.Vector3(CW / 2, hy, 0), new THREE.Vector3(0.52, 0.1, 0), "z", -1);
+    addPanel(endGeo, new THREE.Vector3(-CW / 2, hy, 0), new THREE.Vector3(-0.52, 0.1, 0), "z", 1);
 
     this.crateLid = new THREE.Mesh(new THREE.BoxGeometry(CW + 0.04, CT, CD + 0.04), this._crateMaterial(2));
     this.crateLid.position.y = CH / 2;
@@ -1323,7 +1331,7 @@ export class CinematicScene {
     const deckGlow = this._sprite(0x06b6d4, 5, 0.35);
     deckGlow.position.set(0, 1.0, 0);
     ship.add(deckGlow);
-    ship.position.set(-9, -0.6, 0);
+    ship.position.set(-12, -0.6, 0);
     this.ship = ship;
     g.add(ship);
 
@@ -1579,8 +1587,9 @@ export class CinematicScene {
     const intoBox = smoothstep(t, 0.52, 0.64);
     const crateGone = smoothstep(t, 0.66, 0.72);
     this.crate.visible = t > 0.1 && crateGone < 1;
-    this.cratePanels.forEach(({ pivot, axis, openAngle }) => {
-      pivot.rotation[axis] = openAngle * (1 - fold);
+    this.cratePanels.forEach(({ pivot, axis, sign, closed, open }) => {
+      pivot.position.lerpVectors(open, closed, fold);
+      pivot.rotation[axis] = sign * 0.78 * (1 - fold);
     });
     this.crateLid.position.y = lerp(1.0, this.crateTop, lidDown);
     this.crateLid.visible = lidDown > 0.001;
@@ -1601,7 +1610,7 @@ export class CinematicScene {
     this.ship.visible = berth > 0;
     this.water.visible = t > 0.3;
     this._setOpacity(this.water, fade * smoothstep(t, 0.3, 0.44));
-    this.ship.position.x = lerp(-9, -0.6, berth) + depart * 10;
+    this.ship.position.x = lerp(-12, -3.8, berth) + depart * 11;
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
 
@@ -1612,11 +1621,13 @@ export class CinematicScene {
     const slotY = this.ship.position.y + this.deckSlot.y;
     const slotZ = this.deckSlot.z;
     const cruiseY = 2.9;
-    const across = smoothstep(h, 0.3, 0.74);
+    const across = smoothstep(h, 0.26, 0.66);
     const cx = lerp(1.55, slotX, across);
     const cz = lerp(0, slotZ, across);
+    // Rise overlaps the traverse so the top corner rounds off; the descent starts
+    // only after the traverse is done, giving a clean vertical set-down.
     const cy =
-      lerp(0.62, cruiseY, smoothstep(h, 0, 0.38)) + (slotY - cruiseY) * smoothstep(h, 0.62, 1);
+      lerp(0.62, cruiseY, smoothstep(h, 0, 0.34)) + (slotY - cruiseY) * smoothstep(h, 0.68, 1);
     this.heroContainer.position.set(boxIn > 0 && h <= 0 ? lerp(5.6, 1.55, boxIn) : cx, cy, cz);
 
     const hooked = smoothstep(t, 0.66, 0.72);
