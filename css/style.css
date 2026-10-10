@@ -532,6 +532,43 @@ form.contact-form {
 .form-success h2 { font-size: 1.6rem; margin-bottom: 10px; }
 .form-success p { max-width: 380px; margin: 0 auto; }
 
+/* ---------- WeChat Work card ---------- */
+.wecom {
+  display: flex;
+  align-items: center;
+  gap: 26px;
+  padding: 26px;
+  margin-top: 22px;
+}
+.wecom__qr {
+  flex: 0 0 160px;
+  width: 160px;
+  height: 160px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff;
+  line-height: 0;
+}
+.wecom__qr img { width: 100%; height: 100%; display: block; }
+.wecom__body { min-width: 0; }
+.wecom__tag {
+  display: block;
+  color: var(--cyan);
+  font-family: var(--font-display);
+  letter-spacing: 0.14em;
+  font-size: 0.74rem;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.wecom__body h3 { font-size: 1.2rem; margin-bottom: 8px; }
+.wecom__body p { font-size: 0.9rem; margin-bottom: 16px; }
+
+@media (max-width: 640px) {
+  .wecom { flex-direction: column; align-items: flex-start; gap: 18px; }
+  .wecom__qr { align-self: center; }
+  .wecom .btn { width: 100%; justify-content: center; }
+}
+
 .form-error {
   background: rgba(239, 68, 68, 0.1);
   border: 1px solid rgba(239, 68, 68, 0.4);
