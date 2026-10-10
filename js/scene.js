@@ -550,41 +550,127 @@ function gearGeometry(radius, teeth, thickness) {
 function hullTexture(maxAnisotropy) {
   const w = 2048, h = 280;
   const { c, ctx } = canvas2d(w, h);
+
+  // Base paint, lighter at the sheer line and dirtier toward the waterline.
   const g = ctx.createLinearGradient(0, 0, 0, h);
-  g.addColorStop(0, "#2b3744");
-  g.addColorStop(0.55, "#1d2733");
-  g.addColorStop(1, "#141c26");
+  g.addColorStop(0, "#33414f");
+  g.addColorStop(0.3, "#27333f");
+  g.addColorStop(0.72, "#1b2531");
+  g.addColorStop(1, "#121a24");
   ctx.fillStyle = g;
   ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = "rgba(0,0,0,0.3)";
-  ctx.lineWidth = 2;
-  for (let x = 0; x < w; x += 170) {
-    ctx.beginPath();
-    ctx.moveTo(x, 0);
-    ctx.lineTo(x, h);
-    ctx.stroke();
+  // Horizontal strakes: each run of plate is a slightly different mix of paint.
+  const strakes = 5;
+  for (let i = 0; i < strakes; i++) {
+    const y = (i / strakes) * h;
+    ctx.fillStyle = `rgba(${200 + Math.random() * 40},${215 + Math.random() * 30},255,${0.015 + Math.random() * 0.03})`;
+    ctx.fillRect(0, y, w, h / strakes);
+    // weld seam: shadow under, highlight over
+    ctx.fillStyle = "rgba(0,0,0,0.34)";
+    ctx.fillRect(0, y, w, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.07)";
+    ctx.fillRect(0, y + 2, w, 1);
   }
-  for (let i = 0; i < 300; i++) {
-    ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.14})`;
-    ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 120, Math.random() * 10);
+
+  // Butt joints between plates, staggered row to row like real shell plating.
+  for (let i = 0; i < strakes; i++) {
+    const y = (i / strakes) * h;
+    const off = (i % 2) * 96;
+    for (let x = off; x < w; x += 192) {
+      ctx.fillStyle = "rgba(0,0,0,0.26)";
+      ctx.fillRect(x, y, 2, h / strakes);
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      ctx.fillRect(x + 2, y, 1, h / strakes);
+    }
   }
-  for (let i = 0; i < 70; i++) {
-    ctx.fillStyle = `rgba(${110 + Math.random() * 50},${60 + Math.random() * 35},30,${Math.random() * 0.2})`;
+
+  // Rust weeping downward from fittings and seams.
+  for (let i = 0; i < 90; i++) {
+    const x = Math.random() * w;
+    const y0 = Math.random() * h * 0.7;
+    const len = 20 + Math.random() * 120;
+    const rg = ctx.createLinearGradient(0, y0, 0, y0 + len);
+    const a = 0.08 + Math.random() * 0.2;
+    rg.addColorStop(0, `rgba(146,78,34,${a})`);
+    rg.addColorStop(0.5, `rgba(120,62,28,${a * 0.6})`);
+    rg.addColorStop(1, "rgba(100,52,24,0)");
+    ctx.fillStyle = rg;
+    ctx.fillRect(x, y0, 2 + Math.random() * 7, len);
+  }
+
+  // Patchy paint wear and touch-ups.
+  for (let i = 0; i < 220; i++) {
+    const light = Math.random() > 0.55;
+    ctx.fillStyle = light
+      ? `rgba(190,205,225,${Math.random() * 0.05})`
+      : `rgba(0,0,0,${Math.random() * 0.12})`;
+    const pw = 12 + Math.random() * 130;
     ctx.beginPath();
-    ctx.arc(Math.random() * w, h * (0.6 + Math.random() * 0.4), 5 + Math.random() * 22, 0, Math.PI * 2);
+    ctx.ellipse(Math.random() * w, Math.random() * h, pw, 4 + Math.random() * 16, Math.random(), 0, Math.PI * 2);
     ctx.fill();
   }
 
+  // Scum line just above the boot-top.
+  const scum = ctx.createLinearGradient(0, h * 0.82, 0, h);
+  scum.addColorStop(0, "rgba(60,52,38,0)");
+  scum.addColorStop(0.5, "rgba(66,56,40,0.3)");
+  scum.addColorStop(1, "rgba(44,38,28,0.42)");
+  ctx.fillStyle = scum;
+  ctx.fillRect(0, h * 0.82, w, h * 0.18);
+
+  // Draft marks at the bow.
+  ctx.fillStyle = "rgba(236,240,246,0.72)";
+  ctx.font = "bold 26px Helvetica, Arial, sans-serif";
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
+  for (let i = 0; i < 4; i++) {
+    const y = h * 0.52 + i * 42;
+    if (y > h - 14) break;
+    ctx.fillText(String(10 - i * 2), 54, y);
+    ctx.fillRect(96, y - 3, 26, 6);
+  }
+
   ctx.fillStyle = "rgba(255,255,255,0.95)";
   ctx.font = "bold 104px Helvetica, Arial, sans-serif";
-  ctx.fillText("CHINA YY TECH", 150, h * 0.44);
-  ctx.fillStyle = "rgba(255,255,255,0.7)";
-  ctx.font = "500 46px Helvetica, Arial, sans-serif";
-  ctx.fillText("chinayytech.com", 152, h * 0.72);
+  ctx.fillText("CHINA YY TECH", 300, h * 0.42);
+  ctx.fillStyle = "rgba(255,255,255,0.68)";
+  ctx.font = "500 44px Helvetica, Arial, sans-serif";
+  ctx.fillText("chinayytech.com", 302, h * 0.68);
 
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = maxAnisotropy;
+  return t;
+}
+
+// Deckhouse: painted superstructure with lit bridge windows.
+function deckhouseTexture(maxAnisotropy) {
+  const w = 512, h = 512;
+  const { c, ctx } = canvas2d(w, h);
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, "#eef2f7");
+  g.addColorStop(0.6, "#dde3ec");
+  g.addColorStop(1, "#c3ccd8");
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+
+  for (let row = 0; row < 4; row++) {
+    const y = 70 + row * 100;
+    ctx.fillStyle = "rgba(10,20,32,0.9)";
+    ctx.fillRect(28, y, w - 56, 46);
+    for (let i = 0; i < 7; i++) {
+      const x = 36 + i * ((w - 72) / 7);
+      ctx.fillStyle = Math.random() > 0.45 ? "rgba(255,226,160,0.75)" : "rgba(40,58,78,0.9)";
+      ctx.fillRect(x, y + 6, (w - 72) / 7 - 12, 34);
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.25)";
+    ctx.fillRect(28, y + 46, w - 56, 3);
+  }
+  for (let i = 0; i < 90; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.07})`;
+    ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 70, Math.random() * 5);
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.anisotropy = maxAnisotropy;
@@ -881,9 +967,10 @@ export class CinematicScene {
     rim.position.set(-6, 2, -4);
     this.scene.add(rim);
 
-    this.forge = new THREE.PointLight(0xff8a2b, 0, 7, 2);
-    this.forge.position.set(0, 0.3, 0);
+    this.forge = new THREE.DirectionalLight(0xff8a2b, 0);
+    this.forge.position.set(0.4, 2.2, 1.6);
     this.scene.add(this.forge);
+    this.scene.add(this.forge.target);
 
     this.scene.add(new THREE.AmbientLight(0x243047, 1.1));
   }
@@ -1334,7 +1421,16 @@ export class CinematicScene {
       ship.add(plate);
     });
 
-    const house = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.0, 1.5), this._steelMaterial(0xe6ebf2, 0.6, 0.4));
+    const houseMat = new THREE.MeshStandardMaterial({
+      map: deckhouseTexture(this._maxAniso),
+      metalness: 0.45,
+      roughness: 0.52,
+      normalMap: this.steel.normalMap,
+      transparent: true,
+      envMapIntensity: 0.9,
+    });
+    houseMat.normalScale.set(0.3, 0.3);
+    const house = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.0, 1.5), houseMat);
     house.position.set(2.55, 0.96, 0);
     const bridge = new THREE.Mesh(
       new THREE.BoxGeometry(1.18, 0.24, 1.54),
@@ -1568,7 +1664,7 @@ export class CinematicScene {
 
     const impact = burst > 0 ? Math.pow(1 - burst, 2.2) : 0;
     const heat = 0.25 + impact * 0.95;
-    this.forge.intensity = (1.1 + impact * 7) * fade;
+    this.forge.intensity = (0.45 + impact * 2.6) * fade;
 
     this.sparkMat.uniforms.uBurst.value = burst;
     this.sparkMat.uniforms.uOpacity.value = burst > 0 ? fade : 0;
