@@ -79,6 +79,9 @@ function glowTexture() {
   ctx.fillRect(0, 0, 128, 128);
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
   return t;
 }
 
@@ -107,6 +110,9 @@ function smokeTexture() {
   ctx.globalCompositeOperation = "source-over";
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
+  t.generateMipmaps = false;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
   return t;
 }
 
@@ -671,27 +677,6 @@ void main() {
   vec3 col = mix(uColor, vec3(1.0), clamp(pulse + head, 0.0, 1.0));
   float a = (0.45 + 0.75 * pulse + 0.5 * head) * uOpacity;
   gl_FragColor = vec4(col * (1.0 + pulse * 1.4), a);
-}`;
-
-const ATMO_VERT = `
-varying vec3 vNormalW;
-varying vec3 vPosW;
-void main() {
-  vNormalW = normalize(mat3(modelMatrix) * normal);
-  vec4 wp = modelMatrix * vec4(position, 1.0);
-  vPosW = wp.xyz;
-  gl_Position = projectionMatrix * viewMatrix * wp;
-}`;
-
-const ATMO_FRAG = `
-uniform vec3 uColor;
-uniform float uIntensity;
-varying vec3 vNormalW;
-varying vec3 vPosW;
-void main() {
-  vec3 viewDir = normalize(cameraPosition - vPosW);
-  float f = pow(1.0 - abs(dot(normalize(vNormalW), viewDir)), 3.2);
-  gl_FragColor = vec4(uColor, clamp(f, 0.0, 1.0) * uIntensity);
 }`;
 
 export class CinematicScene {
@@ -1519,23 +1504,9 @@ export class CinematicScene {
       g.add(this.clouds);
     }
 
-    this.atmoMat = new THREE.ShaderMaterial({
-      vertexShader: ATMO_VERT,
-      fragmentShader: ATMO_FRAG,
-      uniforms: {
-        uColor: { value: new THREE.Color(0x4aa8ff) },
-        uIntensity: { value: 0 },
-      },
-      transparent: true,
-      blending: THREE.AdditiveBlending,
-      side: THREE.BackSide,
-      depthWrite: false,
-    });
-    const atmo = new THREE.Mesh(new THREE.SphereGeometry(GLOBE_R * 1.1, 64, 64), this.atmoMat);
-    atmo.userData.skipFade = true;
-    g.add(atmo);
-
-    const halo = this._sprite(0x1e6fd0, GLOBE_R * 4.6, 0.4);
+    // No fresnel shell: it drew a hard blue ring around the limb. A wide, faint
+    // sprite behind the globe gives depth without outlining it.
+    const halo = this._sprite(0x1b4f90, GLOBE_R * 5.2, 0.16);
     g.add(halo);
 
     const origin = latLonToVec3(CHINA.lat, CHINA.lon, GLOBE_R);
@@ -1684,11 +1655,12 @@ export class CinematicScene {
     });
 
     // -- crate: four hinged panels fold up from flat, then the lid seats
+    const crateIn = smoothstep(t, 0.24, 0.36);
     const fold = smoothstep(t, 0.3, 0.44);
     const lidDown = smoothstep(t, 0.41, 0.5);
     const intoBox = smoothstep(t, 0.6, 0.69);
     const crateGone = smoothstep(t, 0.71, 0.76);
-    this.crate.visible = t > 0.26 && crateGone < 1;
+    this.crate.visible = crateIn > 0 && crateGone < 1;
     this.cratePanels.forEach(({ pivot, axis, sign, closed, open }) => {
       pivot.position.lerpVectors(open, closed, fold);
       pivot.rotation[axis] = sign * 0.78 * (1 - fold);
@@ -1696,7 +1668,7 @@ export class CinematicScene {
     this.crateLid.position.y = lerp(1.0, this.crateTop, lidDown);
     this.crateLid.visible = lidDown > 0.001;
     this.crate.position.x = lerp(0, 1.55, intoBox);
-    this._setOpacity(this.crate, fade * (1 - crateGone));
+    this._setOpacity(this.crate, fade * crateIn * (1 - crateGone));
 
     // -- container rolls in, opens, closes
     const boxIn = smoothstep(t, 0.48, 0.56);
@@ -1755,7 +1727,6 @@ export class CinematicScene {
     const t = clamp(raw, 0, 1);
     const fade = smoothstep(raw, -OVERLAP, OVERLAP);
     this.globe.material.opacity = fade;
-    this.atmoMat.uniforms.uIntensity.value = fade * 0.95;
     if (this.clouds) this.clouds.material.opacity = fade * 0.42;
     this.groupC.scale.setScalar(lerp(0.55, 1, smoothstep(t, 0, 0.32)));
 
