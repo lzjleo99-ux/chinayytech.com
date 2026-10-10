@@ -250,11 +250,12 @@ const OVERLAP = 0.14;
 const CAM_KEYS = [
   { p: 0.0, pos: [2.5, 2.7, 7.9], look: [0, 1.45, 0] },
   { p: 0.7, pos: [2.1, 2.4, 7.0], look: [0, 1.3, 0] },
-  { p: 1.0, pos: [1.5, 2.0, 6.3], look: [0, 0.95, 0] },
-  { p: 1.35, pos: [0.7, 1.75, 5.9], look: [0.15, 0.45, 0] },
-  { p: 1.7, pos: [0.45, 1.5, 6.7], look: [0.5, 0.12, -0.1] },
-  { p: 2.0, pos: [0.5, 1.2, 7.5], look: [0.55, 0, -0.55] },
-  { p: 2.45, pos: [0.25, 0.9, 8.4], look: [0.2, 0, -1.35] },
+  { p: 1.0, pos: [1.5, 1.6, 3.9], look: [0, 0.66, 0] },
+  { p: 1.3, pos: [1.9, 1.5, 4.3], look: [0.5, 0.62, 0] },
+  { p: 1.55, pos: [2.2, 1.7, 5.2], look: [0.9, 0.6, 0] },
+  { p: 1.78, pos: [1.4, 2.6, 7.2], look: [0.3, 1.2, 0] },
+  { p: 2.0, pos: [0.4, 1.4, 9.0], look: [0.2, 0.2, -0.5] },
+  { p: 2.45, pos: [0.25, 0.9, 8.8], look: [0.2, 0, -1.35] },
   { p: 3.0, pos: [0, 0.5, 9.6], look: [0, 0, -2] },
 ];
 
@@ -315,6 +316,81 @@ function plankNormal(maxAnisotropy) {
 
 // Corrugated container side. Rendered large so the branding stays razor sharp;
 // text is drawn as vectors, so resolution costs nothing in download size.
+// Corrugated steel shipping container. The rib pattern is the same on every
+// container, so the Sobel pass runs once and the normal map is shared.
+function corrugationNormal(maxAnisotropy) {
+  const w = 1024, h = 512;
+  const { ctx } = canvas2d(w, h);
+  ctx.fillStyle = "#808080";
+  ctx.fillRect(0, 0, w, h);
+  for (let x = 0; x < w; x += 32) {
+    const g = ctx.createLinearGradient(x, 0, x + 32, 0);
+    g.addColorStop(0, "#2a2a2a");
+    g.addColorStop(0.5, "#e2e2e2");
+    g.addColorStop(1, "#2a2a2a");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 26, 32, h - 52);
+  }
+  ctx.fillStyle = "#9a9a9a";
+  ctx.fillRect(0, 0, w, 26);
+  ctx.fillRect(0, h - 26, w, 26);
+  const t = new THREE.CanvasTexture(sobelNormal(ctx, w, h, 1.6));
+  t.anisotropy = maxAnisotropy;
+  return t;
+}
+
+function containerAlbedo(baseColor, brand, maxAnisotropy) {
+  const w = 2048, h = 1024;
+  const { c, ctx } = canvas2d(w, h);
+  ctx.fillStyle = baseColor;
+  ctx.fillRect(0, 0, w, h);
+
+  for (let x = 0; x < w; x += 64) {
+    const g = ctx.createLinearGradient(x, 0, x + 64, 0);
+    g.addColorStop(0, "rgba(0,0,0,0.36)");
+    g.addColorStop(0.34, "rgba(255,255,255,0.13)");
+    g.addColorStop(0.66, "rgba(255,255,255,0.05)");
+    g.addColorStop(1, "rgba(0,0,0,0.36)");
+    ctx.fillStyle = g;
+    ctx.fillRect(x, 60, 64, h - 120);
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.42)";
+  ctx.fillRect(0, 0, w, 60);
+  ctx.fillRect(0, h - 60, w, 60);
+  ctx.fillStyle = "rgba(16,20,26,0.92)";
+  [[0, 0], [w - 136, 0], [0, h - 88], [w - 136, h - 88]].forEach(([x, y]) => ctx.fillRect(x, y, 136, 88));
+
+  for (let i = 0; i < 420; i++) {
+    ctx.fillStyle = `rgba(0,0,0,${Math.random() * 0.12})`;
+    ctx.fillRect(Math.random() * w, Math.random() * h, Math.random() * 170, Math.random() * 24);
+  }
+  for (let i = 0; i < 80; i++) {
+    ctx.fillStyle = `rgba(${90 + Math.random() * 60},${50 + Math.random() * 40},30,${Math.random() * 0.2})`;
+    ctx.beginPath();
+    ctx.arc(Math.random() * w, Math.random() * h, 6 + Math.random() * 28, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  if (brand) {
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.5)";
+    ctx.shadowBlur = 14;
+    ctx.fillStyle = "rgba(255,255,255,0.97)";
+    ctx.font = "bold 168px Helvetica, Arial, sans-serif";
+    ctx.fillText("CHINA YY TECH", w / 2, h * 0.43);
+    ctx.fillStyle = "rgba(255,255,255,0.84)";
+    ctx.font = "500 72px Helvetica, Arial, sans-serif";
+    ctx.fillText("chinayytech.com", w / 2, h * 0.58);
+    ctx.shadowBlur = 0;
+  }
+
+  const map = new THREE.CanvasTexture(c);
+  map.colorSpace = THREE.SRGBColorSpace;
+  map.anisotropy = maxAnisotropy;
+  return map;
+}
+
 // Industrial export crate: sawn planks, grain, knots, steel corner braces and a
 // stencilled mark. Drawn large so the stencil stays crisp — vector text costs
 // nothing in download size.
@@ -825,6 +901,35 @@ export class CinematicScene {
     return mats;
   }
 
+  _containerMaterial(hex, brand) {
+    if (!this._containerCache) {
+      this._containerCache = new Map();
+      this._ribNormal = corrugationNormal(this._maxAniso);
+    }
+    const key = hex + (brand ? "|b" : "");
+    if (this._containerCache.has(key)) return this._containerCache.get(key);
+    const m = new THREE.MeshStandardMaterial({
+      map: containerAlbedo(hex, brand, this._maxAniso),
+      normalMap: this._ribNormal,
+      metalness: 0.52,
+      roughness: 0.5,
+      transparent: true,
+      envMapIntensity: 1.15,
+    });
+    m.normalScale.set(0.9, 0.9);
+    this._containerCache.set(key, m);
+    return m;
+  }
+
+  // Opacity on a subtree, handling multi-material meshes.
+  _setOpacity(obj, value) {
+    obj.traverse((o) => {
+      if (!o.material) return;
+      const mats = Array.isArray(o.material) ? o.material : [o.material];
+      for (const m of mats) m.opacity = value;
+    });
+  }
+
   _steelMaterial(color, metalness, roughness) {
     const mat = new THREE.MeshStandardMaterial({
       color,
@@ -1037,24 +1142,74 @@ export class CinematicScene {
   _initPhaseB() {
     const g = new THREE.Group();
 
+    // Everything is sized so it genuinely nests: machine fits the crate, crate
+    // fits the container, container fits a deck slot. No scale cheats.
     const machine = new THREE.Group();
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(1.45, 1.05, 1.05), this._steelMaterial(0xdde3ea, 0.85, 0.28));
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.44, 0.46), this._steelMaterial(0xdde3ea, 0.85, 0.28));
     const drum = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.36, 0.36, 1.25, 48),
+      new THREE.CylinderGeometry(0.15, 0.15, 0.5, 32),
       this._steelMaterial(0xf59e0b, 0.9, 0.28)
     );
     drum.rotation.z = Math.PI / 2;
-    drum.position.x = 0.92;
-    machine.add(shell, drum);
+    drum.position.x = 0.26;
+    const foot = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.06, 0.52), this._steelMaterial(0x39414c, 0.8, 0.45));
+    foot.position.y = -0.25;
+    machine.add(shell, drum, foot);
+    machine.position.set(0, 0.62, 0);
     machine.traverse((m) => {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
     this.machine = machine;
     g.add(machine);
 
-    this.crate = new THREE.Mesh(new THREE.BoxGeometry(1.65, 1.35, 1.65), this._crateMaterial(0));
-    this.crate.castShadow = !LOW_POWER;
-    g.add(this.crate);
+    // Wooden export crate: walls rise around the machine, then the lid seats.
+    const crate = new THREE.Group();
+    this.crateBody = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.56, 0.68), this._crateMaterial(0));
+    this.crateLid = new THREE.Mesh(new THREE.BoxGeometry(1.16, 0.08, 0.72), this._crateMaterial(1));
+    crate.add(this.crateBody, this.crateLid);
+    crate.position.set(0, 0.62, 0);
+    crate.traverse((m) => {
+      if (m.isMesh) m.castShadow = !LOW_POWER;
+    });
+    this.crate = crate;
+    g.add(crate);
+
+    // Hero shipping container with doors that actually swing.
+    const cMat = this._containerMaterial("#b33b2e", true);
+    const container = new THREE.Group();
+    const shellBox = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.68, 0.84), cMat);
+    container.add(shellBox);
+    this.containerDoors = [];
+    [1, -1].forEach((side) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(-0.7, 0, side * 0.42);
+      const leaf = new THREE.Mesh(
+        new THREE.BoxGeometry(0.04, 0.66, 0.42),
+        this._steelMaterial(0x8d3326, 0.6, 0.5)
+      );
+      leaf.position.set(0, 0, -side * 0.21);
+      pivot.add(leaf);
+      container.add(pivot);
+      this.containerDoors.push({ pivot, side });
+    });
+    container.position.set(1.55, 0.62, 0);
+    container.traverse((m) => {
+      if (m.isMesh) m.castShadow = !LOW_POWER;
+    });
+    this.heroContainer = container;
+    g.add(container);
+
+    // Crane: a cable that pays out and a hook block, for the lift onto the deck.
+    const crane = new THREE.Group();
+    this.craneCable = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.018, 0.018, 1, 8),
+      new THREE.MeshStandardMaterial({ color: 0x2a3038, metalness: 0.9, roughness: 0.4, transparent: true })
+    );
+    this.craneHook = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.34), this._steelMaterial(0xf59e0b, 0.85, 0.4));
+    crane.add(this.craneCable, this.craneHook);
+    crane.visible = false;
+    this.crane = crane;
+    g.add(crane);
 
     const ship = new THREE.Group();
     const hullSide = new THREE.MeshStandardMaterial({
@@ -1068,26 +1223,26 @@ export class CinematicScene {
     hullSide.normalScale.set(0.4, 0.4);
     const hullPlain = this._steelMaterial(0x1f2a36, 0.8, 0.45);
     const hull = new THREE.Mesh(
-      new THREE.BoxGeometry(6.2, 0.85, 1.7),
+      new THREE.BoxGeometry(6.8, 0.92, 1.95),
       [hullPlain, hullPlain, hullPlain, hullPlain, hullSide, hullSide]
     );
     ship.add(hull);
 
-    const boot = new THREE.Mesh(new THREE.BoxGeometry(6.26, 0.18, 1.76), this._steelMaterial(0x7c2d12, 0.4, 0.6));
-    boot.position.y = -0.36;
+    const boot = new THREE.Mesh(new THREE.BoxGeometry(6.86, 0.2, 2.0), this._steelMaterial(0x7c2d12, 0.4, 0.6));
+    boot.position.y = -0.4;
     ship.add(boot);
 
     [-1, 1].forEach((side) => {
-      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.85, 0.12), this._steelMaterial(0x1f2a36, 0.8, 0.45));
-      plate.position.set(-3.45, 0, side * 0.44);
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.92, 0.14), this._steelMaterial(0x1f2a36, 0.8, 0.45));
+      plate.position.set(-3.8, 0, side * 0.5);
       plate.rotation.y = side * 0.62;
       ship.add(plate);
     });
 
-    const house = new THREE.Mesh(new THREE.BoxGeometry(1.05, 0.95, 1.32), this._steelMaterial(0xe6ebf2, 0.6, 0.4));
-    house.position.set(2.2, 0.9, 0);
+    const house = new THREE.Mesh(new THREE.BoxGeometry(1.15, 1.0, 1.5), this._steelMaterial(0xe6ebf2, 0.6, 0.4));
+    house.position.set(2.55, 0.96, 0);
     const bridge = new THREE.Mesh(
-      new THREE.BoxGeometry(1.08, 0.22, 1.36),
+      new THREE.BoxGeometry(1.18, 0.24, 1.54),
       new THREE.MeshStandardMaterial({
         color: 0x0b1a2a,
         metalness: 0.95,
@@ -1096,27 +1251,35 @@ export class CinematicScene {
         envMapIntensity: 1.8,
       })
     );
-    bridge.position.set(2.2, 1.16, 0);
+    bridge.position.set(2.55, 1.24, 0);
     const funnel = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.17, 0.19, 0.52, 32),
+      new THREE.CylinderGeometry(0.18, 0.2, 0.56, 32),
       this._steelMaterial(0x2b3542, 0.7, 0.45)
     );
-    funnel.position.set(2.62, 1.6, 0);
+    funnel.position.set(2.98, 1.7, 0);
     const funnelBand = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.2, 0.2, 0.14, 32),
+      new THREE.CylinderGeometry(0.21, 0.21, 0.15, 32),
       this._steelMaterial(0xf59e0b, 0.8, 0.35)
     );
-    funnelBand.position.set(2.62, 1.68, 0);
+    funnelBand.position.set(2.98, 1.78, 0);
     ship.add(house, bridge, funnel, funnelBand);
 
-    const boxGeo = new THREE.BoxGeometry(1.28, 0.62, 0.76);
+    // Deck stack. One slot is deliberately left empty for the hero container.
+    const palette = ["#0e7490", "#b45309", "#3c6e4f", "#1f4f78"];
+    const boxGeo = new THREE.BoxGeometry(1.4, 0.68, 0.84);
+    this.deckSlot = new THREE.Vector3(0.7, 1.54, 0.5);
     let n = 0;
     for (let bay = 0; bay < 3; bay++) {
       for (let row = 0; row < 2; row++) {
         for (let tier = 0; tier < 2; tier++) {
-          const box = new THREE.Mesh(boxGeo, this._crateMaterial(n % WOOD_TONES.length));
-          box.position.set(-2.35 + bay * 1.34, 0.74 + tier * 0.64, row === 0 ? 0.41 : -0.41);
-          box.rotation.y = (Math.random() - 0.5) * 0.03;
+          const x = -2.2 + bay * 1.45;
+          const y = 0.84 + tier * 0.7;
+          const z = row === 0 ? 0.5 : -0.5;
+          if (Math.abs(x - this.deckSlot.x) < 0.01 && Math.abs(y - this.deckSlot.y) < 0.01 && z === this.deckSlot.z) {
+            continue;
+          }
+          const box = new THREE.Mesh(boxGeo, this._containerMaterial(palette[n % palette.length], n % 2 === 0));
+          box.position.set(x, y, z);
           ship.add(box);
           n++;
         }
@@ -1127,9 +1290,9 @@ export class CinematicScene {
       if (m.isMesh) m.castShadow = !LOW_POWER;
     });
     const deckGlow = this._sprite(0x06b6d4, 5, 0.35);
-    deckGlow.position.set(0, 0.9, 0);
+    deckGlow.position.set(0, 1.0, 0);
     ship.add(deckGlow);
-    ship.position.set(0, -0.6, 0);
+    ship.position.set(-9, -0.6, 0);
     this.ship = ship;
     g.add(ship);
 
@@ -1148,7 +1311,7 @@ export class CinematicScene {
       waterMat.needsUpdate = true;
       this.waterNormal = t;
     });
-    this.water = new THREE.Mesh(new THREE.PlaneGeometry(90, 90, 1, 1), waterMat);
+    this.water = new THREE.Mesh(new THREE.PlaneGeometry(120, 120, 1, 1), waterMat);
     this.water.rotation.x = -Math.PI / 2;
     this.water.position.y = -1.02;
     this.water.receiveShadow = !LOW_POWER;
@@ -1361,21 +1524,78 @@ export class CinematicScene {
     this._fade(this.groupB, fade);
     const t = clamp(raw, 0, 1);
 
-    this.machine.visible = t < 0.44;
-    this.machine.scale.setScalar(lerp(0.4, 1, smoothstep(t, 0, 0.16)));
-    this.machine.rotation.y = t * Math.PI * 1.4;
+    // One continuous shot. Every handover overlaps: nothing is switched on while
+    // something else still occupies the same space at full opacity, which is what
+    // made the machine and crate interpenetrate before.
+    //
+    //  .00-.16 machine assembles      .16-.32 crate closes around it
+    //  .30-.44 container rolls in     .42-.52 doors open
+    //  .50-.62 crate slides inside    .60-.68 doors close
+    //  .46-.66 ship berths            .64-.82 crane lifts container to the deck
+    //  .80-1.0 ship sails out
 
-    this.crate.visible = t >= 0.3 && t < 0.64;
-    this.crate.scale.setScalar(lerp(0.4, 1, smoothstep(t, 0.3, 0.44)));
-    this.crate.rotation.y = t * 2.2;
+    // -- machine
+    const machineIn = smoothstep(t, 0, 0.14);
+    const machineGone = smoothstep(t, 0.2, 0.3);
+    this.machine.visible = machineGone < 1;
+    this.machine.scale.setScalar(lerp(0.35, 1, machineIn));
+    this.machine.rotation.y = t * Math.PI * 1.6;
+    this._setOpacity(this.machine, fade * (1 - machineGone));
 
-    const shipIn = smoothstep(t, 0.52, 0.7);
-    this.ship.visible = t >= 0.5;
-    this.water.visible = t >= 0.5;
-    this.ship.scale.setScalar(lerp(0.35, 1, shipIn));
-    this.ship.position.x = lerp(-4.2, 2.6, smoothstep(t, 0.58, 1));
+    // -- crate: walls grow up around the machine, then the lid seats
+    const crateUp = smoothstep(t, 0.16, 0.32);
+    const lidDown = smoothstep(t, 0.26, 0.38);
+    const intoBox = smoothstep(t, 0.48, 0.6);
+    const crateGone = smoothstep(t, 0.59, 0.65);
+    this.crate.visible = crateUp > 0 && crateGone < 1;
+    this.crateBody.scale.y = Math.max(crateUp, 0.001);
+    // grow from the floor rather than the centre
+    this.crateBody.position.y = -0.28 + 0.28 * crateUp;
+    this.crateLid.position.y = lerp(0.95, 0.3, lidDown);
+    this.crateLid.scale.setScalar(lidDown > 0 ? 1 : 0.001);
+    this.crate.position.x = lerp(0, 1.55, intoBox);
+    this.crate.position.y = 0.62;
+    this._setOpacity(this.crate, fade * (1 - crateGone));
+
+    // -- container rolls in, opens, closes
+    const boxIn = smoothstep(t, 0.3, 0.44);
+    const doorsOpen = smoothstep(t, 0.42, 0.52) * (1 - smoothstep(t, 0.62, 0.7));
+    this.heroContainer.visible = boxIn > 0;
+    this.heroContainer.position.x = lerp(5.6, 1.55, boxIn);
+    this.containerDoors.forEach(({ pivot, side }) => {
+      pivot.rotation.y = side * 1.95 * doorsOpen;
+    });
+
+    // -- ship berths, then departs
+    const berth = smoothstep(t, 0.46, 0.66);
+    const depart = smoothstep(t, 0.82, 1);
+    this.ship.visible = berth > 0;
+    this.water.visible = t > 0.34;
+    this._setOpacity(this.water, fade * smoothstep(t, 0.34, 0.46));
+    this.ship.position.x = lerp(-9, -0.6, berth) + depart * 9.5;
     this.ship.position.y = -0.6 + (REDUCED_MOTION ? 0 : Math.sin(time * 1.1) * 0.05);
     this.ship.rotation.z = REDUCED_MOTION ? 0 : Math.sin(time * 0.9) * 0.02;
+
+    // -- crane lift: hook drops, container rises, traverses, settles in the slot
+    const hooked = smoothstep(t, 0.64, 0.7);
+    const lift = smoothstep(t, 0.68, 0.78);
+    const settle = smoothstep(t, 0.76, 0.86);
+    const slotX = this.ship.position.x + this.deckSlot.x;
+    const slotY = this.ship.position.y + this.deckSlot.y;
+    if (lift > 0) {
+      this.heroContainer.position.x = lerp(1.55, slotX, settle);
+      this.heroContainer.position.y = lerp(0.62, 2.9, lift) - (2.9 - slotY) * settle;
+      this.heroContainer.position.z = lerp(0, this.deckSlot.z, settle);
+    }
+    this.crane.visible = hooked > 0 && settle < 1;
+    if (this.crane.visible) {
+      const topY = 4.6;
+      const hookY = this.heroContainer.position.y + 0.5;
+      this.craneHook.position.set(this.heroContainer.position.x, hookY, this.heroContainer.position.z);
+      this.craneCable.position.set(this.heroContainer.position.x, (topY + hookY) / 2, this.heroContainer.position.z);
+      this.craneCable.scale.y = Math.max(topY - hookY, 0.01);
+      this._setOpacity(this.crane, fade * hooked * (1 - settle * 0.9));
+    }
 
     if (this.waterNormal) {
       this.waterNormal.offset.x += dt * 0.014;
