@@ -33,9 +33,9 @@ jobs:
       - name: Stamp build id into asset URLs
         run: |
           BUILD="${GITHUB_SHA::12}"
-          sed -i "s/__BUILD__/${BUILD}/g" index.html contact.html js/main.js
+          sed -i "s/__BUILD__/${BUILD}/g" index.html contact.html privacy.html js/main.js
           echo "Stamped build ${BUILD}"
-          grep -o "v=${BUILD}" index.html js/main.js | sort | uniq -c
+          grep -o "v=${BUILD}" index.html contact.html privacy.html js/main.js | sort | uniq -c
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
