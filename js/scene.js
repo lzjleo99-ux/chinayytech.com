@@ -796,7 +796,7 @@ export class CinematicScene {
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     // Threshold kept high so only the hot cores bloom and geometry stays crisp.
-    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.78, 0.7, 0.62);
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.7, 0.72, 0.78);
     this.composer.addPass(this.bloom);
     // Required with a composer chain: applies tone mapping + sRGB at the end.
     this.composer.addPass(new OutputPass());
@@ -1047,10 +1047,6 @@ export class CinematicScene {
     });
     g.add(hammer);
     this.hammer = hammer;
-
-    this.hearth = this._sprite(0xffb24a, 1.9, 0);
-    this.hearth.position.set(0, 0.56, 0);
-    g.add(this.hearth);
 
     this.smoke = [];
     const smokeTex = smokeTexture();
@@ -1627,9 +1623,7 @@ export class CinematicScene {
 
     const impact = burst > 0 ? Math.pow(1 - burst, 2.2) : 0;
     const heat = 0.25 + impact * 0.95;
-    this.hearth.scale.setScalar(1.6 + impact * 3.4);
-    this.hearth.material.opacity = (0.25 + impact * 0.75) * fade;
-    this.forge.intensity = (1.6 + impact * 26) * fade;
+    this.forge.intensity = (2.6 + impact * 30) * fade;
 
     this.sparkMat.uniforms.uBurst.value = burst;
     this.sparkMat.uniforms.uOpacity.value = burst > 0 ? fade : 0;
