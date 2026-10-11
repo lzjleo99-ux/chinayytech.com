@@ -10,7 +10,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (yearEl) yearEl.textContent = new Date().getFullYear();
 
   if (document.getElementById("inquiry-form")) {
-    import("./form.js?v=ca7e3b48621f")
+    import("./form.js?v=a04fec915d3f")
       .then(({ initContactForm }) => initContactForm())
       .catch((err) => console.error("Contact form script failed to load.", err));
   }
@@ -19,7 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!canvas) return;
 
   // Dynamic import so pages without the hero never download the Three.js bundle.
-  import("./scene.js?v=ca7e3b48621f")
+  import("./scene.js?v=a04fec915d3f")
     .then(({ CinematicScene }) => {
       const scene = new CinematicScene(canvas);
       const captions = Array.from(document.querySelectorAll(".storyboard__caption"));
@@ -34,6 +34,14 @@ document.addEventListener("DOMContentLoaded", () => {
         if (hint) hint.style.opacity = progress > 0.08 ? "0" : "0.7";
       }
 
+      // visualViewport.height tracks the real visible area; window.innerHeight
+      // is pinned to the largest viewport and doesn't update as a mobile
+      // browser's address bar shows/hides mid-scroll, which desynced this
+      // progress math from the sticky stage's actual on-screen height.
+      function viewportHeight() {
+        return window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      }
+
       let queued = false;
       function onScroll() {
         if (queued) return;
@@ -42,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
           queued = false;
           if (!stage) return;
           const rect = stage.getBoundingClientRect();
-          const total = rect.height - window.innerHeight;
+          const total = rect.height - viewportHeight();
           const progress = total > 0 ? Math.min(3, Math.max(0, (-rect.top / total) * 3)) : 0;
           scene.setProgress(progress);
           setActivePhase(progress);
@@ -51,6 +59,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
       window.addEventListener("scroll", onScroll, { passive: true });
       window.addEventListener("resize", onScroll, { passive: true });
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener("resize", onScroll, { passive: true });
+      }
       onScroll();
     })
     .catch((err) => {

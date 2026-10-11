@@ -209,10 +209,16 @@ img, canvas { display: block; max-width: 100%; }
 @media (max-width: 820px) {
   .storyboard { height: 820vh; }
 }
+/* dvh tracks the real visible area on mobile; plain vh is pinned to the
+   largest possible viewport, so on phones/iPads where the browser chrome
+   shows and hides while scrolling, vh leaves the sticky stage taller than
+   what's actually on screen (gaps, misaligned captions). Declared second so
+   browsers without dvh support keep the vh fallback above. */
 .storyboard__stage {
   position: sticky;
   top: 0;
   height: 100vh;
+  height: 100dvh;
   width: 100%;
   overflow: hidden;
   /* Base layer under the canvas: the stage still reads as designed if WebGL never paints. */
