@@ -561,15 +561,6 @@ form.contact-form {
   color: var(--cyan);
 }
 .doc__meta { color: var(--text-dim); font-size: 0.84rem; }
-.doc__todo {
-  background: rgba(245, 158, 11, 0.09);
-  border: 1px solid rgba(245, 158, 11, 0.4);
-  border-radius: 12px;
-  padding: 16px 18px;
-  color: var(--text-dim);
-  font-size: 0.88rem;
-}
-.doc__todo strong { color: var(--gold-bright); }
 .doc__fill {
   background: rgba(245, 158, 11, 0.18);
   border-bottom: 1px dashed var(--gold);
